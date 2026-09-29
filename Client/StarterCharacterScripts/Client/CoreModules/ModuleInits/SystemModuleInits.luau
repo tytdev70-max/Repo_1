@@ -72,7 +72,7 @@ local Network             = require(modules.Core.Networking.SPH_Network)
 local viewMod             = require(modules.Weapons.Equip.ViewMod)
 local springMod           = require(modules.Core.Math.SpringModule)
 local shellEjection       = require(modules.Weapons.Fire.ShellEjection)
-local attachmentManager   = require(modules.Weapons.Attachments.AttachmentManager)
+local attachmentSystem   = require(modules.ThirdParty.AttachmentSystem)
 local mobileSupport       = require(modules.Weapons.UI.MobileSupportMod)
 local assetPreloader      = require(modules.Systems.AssetPreloader)
 local gunModelPreloader   = require(modules.Weapons.Equip.GunModelPreloader)
@@ -104,7 +104,7 @@ local SystemModuleInits = {}
 -- Export all sub-modules so other init files and handlers can reference them
 SystemModuleInits.weldMod              = weldMod
 SystemModuleInits.Network              = Network
-SystemModuleInits.attachmentManager    = attachmentManager
+SystemModuleInits.attachmentSystem    = attachmentSystem
 SystemModuleInits.mobileSupport        = mobileSupport
 SystemModuleInits.assetPreloader       = assetPreloader
 SystemModuleInits.grenadeClient        = grenadeClient
@@ -133,7 +133,7 @@ SystemModuleInits.bulletHandler        = bulletHandler
 function SystemModuleInits.init()
 	-- mobileSupport
 	mobileSupport.Init({
-		attachmentManager = attachmentManager,
+		attachmentSystem = attachmentSystem,
 		playerGui         = playerGui,
 		HandleInput       = WeaponBindings.HandleInput,
 		character         = character,
@@ -207,7 +207,7 @@ function SystemModuleInits.init()
 		userInputService        = userInputService,
 		config                  = config,
 		defaultFOV              = defaultFOV,
-		attachmentManager       = attachmentManager,
+		attachmentSystem       = attachmentSystem,
 		mobileSupport           = mobileSupport,
 		aimDoF                  = aimDoF,
 		gunRecoilSpring         = gunRecoilSpring,
@@ -233,7 +233,7 @@ function SystemModuleInits.init()
 		rig               = vars.rig,
 		camera            = camera,
 		defaultFOV        = defaultFOV,
-		attachmentManager = attachmentManager,
+		attachmentSystem = attachmentSystem,
 		ubglSystem        = ubglSystem,
 		playRepSound      = WeaponBindings.PlayRepSound,
 		repLPVORing       = PacketRefs.repLPVORing,
@@ -273,7 +273,7 @@ function SystemModuleInits.init()
 		userInputService                 = userInputService,
 		ContentProvider                  = ContentProvider,
 		grenadeClient                    = grenadeClient,
-		attachmentManager                = attachmentManager,
+		attachmentSystem                = attachmentSystem,
 		mobileSupport                    = mobileSupport,
 		warnPrefix                       = warnPrefix,
 		recoilSpring                     = recoilSpring,
@@ -298,7 +298,7 @@ function SystemModuleInits.init()
 	laserSightMod.Init({
 		character               = character,
 		storageCFrame           = storageCFrame,
-		attachmentManager       = attachmentManager,
+		attachmentSystem       = attachmentSystem,
 		getThirdPersonGunModel  = WeaponBindings.GetThirdPersonGunModel,
 		isAnimationBusy         = WeaponBindings.IsAnimationBusy,
 		playAnimation           = WeaponBindings.PlayAnimation,
@@ -345,7 +345,7 @@ function SystemModuleInits.init()
 		config                  = config,
 		tweenService            = tweenService,
 		shootBlur               = shootBlur,
-		attachmentManager       = attachmentManager,
+		attachmentSystem       = attachmentSystem,
 		bulletHandler           = bulletHandler,
 		player                  = player,
 		playerGui               = playerGui,
@@ -388,7 +388,7 @@ function SystemModuleInits.init()
 		defaultFOV              = defaultFOV,
 		storageCFrame           = storageCFrame,
 		headPoseReplicationMod  = headPoseReplicationMod,
-		attachmentManager       = attachmentManager,
+		attachmentSystem       = attachmentSystem,
 		grenadeClient           = grenadeClient,
 		laserSightMod           = laserSightMod,
 		glareMod                = glareMod,
@@ -426,7 +426,7 @@ function SystemModuleInits.init()
 		assets                  = assets,
 		character               = character,
 		humanoid                = humanoid,
-		attachmentManager       = attachmentManager,
+		attachmentSystem       = attachmentSystem,
 		mobileSupport           = mobileSupport,
 		recoilSpring            = recoilSpring,
 		gunRecoilSpring         = gunRecoilSpring,

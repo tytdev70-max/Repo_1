@@ -10,13 +10,13 @@ local mobilePickupGui   = nil
 local mobileMovementGui = nil
 
 local _vars
-local _attachmentManager, _playerGui, _HandleInput
+local _attachmentSystem, _playerGui, _HandleInput
 local _character, _humanoid, _player, _Network, _assets
 local _proxPromptService, _defaultFOV
 
 function MobileSupportMod.Init(deps)
 	_vars = require(Modules.Weapons.Core.WeaponState).get()
-	_attachmentManager = deps.attachmentManager
+	_attachmentSystem = deps.attachmentSystem
 	_playerGui         = deps.playerGui
 	_HandleInput       = deps.HandleInput
 	_character         = deps.character
@@ -94,17 +94,17 @@ local function MakeBtn(parent, name, label, px, py, diameter, r, g, b, iconId, i
 	return btn
 end
 
-local function HasLaserAttachment()
+local function HasLaser()
 	local gm = _vars.gunModel
 	if not gm then return false end
 	return (gm.Grip:FindFirstChild("Laser") ~= nil)
-		or _attachmentManager.HasLaserAttachment(gm)
+		or _attachmentSystem.HasLaser(gm)
 end
 
-local function HasFlashlightAttachment()
+local function HasFlashlight()
 	local gm = _vars.gunModel
 	if not gm then return false end
-	return _attachmentManager.GetFlashlightSource(gm) ~= nil
+	return _attachmentSystem.GetFlashlightSource(gm) ~= nil
 end
 
 function MobileSupportMod.UpdateMobileButtonVisibility()
@@ -135,8 +135,8 @@ function MobileSupportMod.UpdateMobileButtonVisibility()
 	local hasPatrolAnim   = (ws ~= nil) and ws.patrolAnim ~= nil
 	local hasHoldDownAnim = (ws ~= nil) and ws.holdDownAnim ~= nil
 
-	if laserBtn   then laserBtn.Visible   = HasLaserAttachment() and not ubglActive end
-	if lightBtn   then lightBtn.Visible   = HasFlashlightAttachment() and not ubglActive end
+	if laserBtn   then laserBtn.Visible   = HasLaser() and not ubglActive end
+	if lightBtn   then lightBtn.Visible   = HasFlashlight() and not ubglActive end
 	if chamberBtn then chamberBtn.Visible = hasChamberAnim and not isGrenade and not ubglActive end
 	if modeBtn    then modeBtn.Visible    = not isGrenade and not ubglActive end
 	if inspectBtn then inspectBtn.Visible = hasInspectAnim and not ubglActive end

@@ -32,7 +32,7 @@ local defaultFOV
 local userInputService
 local ContentProvider
 local grenadeClient
-local attachmentManager
+local attachmentSystem
 local mobileSupport
 local warnPrefix
 local recoilSpring
@@ -85,7 +85,7 @@ function WeaponEquipMod.Init(deps)
 	userInputService = deps.userInputService
 	ContentProvider = deps.ContentProvider
 	grenadeClient = deps.grenadeClient
-	attachmentManager = deps.attachmentManager
+	attachmentSystem = deps.attachmentSystem
 	mobileSupport = deps.mobileSupport
 	warnPrefix = deps.warnPrefix
 	recoilSpring = deps.recoilSpring
@@ -204,9 +204,9 @@ function WeaponEquipMod.EquipWeapon(newChild)
 		return
 	end
 
-	attachmentManager.StoreOriginalStats(equipped, wepStats)
+	attachmentSystem.StoreBaseStats(equipped, wepStats)
 
-	wepStats = attachmentManager.ApplyAttachmentStats(equipped, nil)
+	wepStats = attachmentSystem.ApplyStats(equipped, nil)
 	vars.wepStats = wepStats
 
 	local baseWalkSpeed = config.walkSpeed or 16
@@ -328,8 +328,8 @@ function WeaponEquipMod.EquipWeapon(newChild)
 		end
 	end
 
-	attachmentManager.ClearAllAttachments(gun)
-	attachmentManager.PrepareForEquip(gun)
+	attachmentSystem.ClearAll(gun)
+	attachmentSystem.PrepareForEquip(gun)
 	collectAndManageSights(gun)
 
 	weldMod.BlankM6D(rig.AnimBase, gun.Grip)
@@ -339,8 +339,8 @@ function WeaponEquipMod.EquipWeapon(newChild)
 		applySavedAttachmentsToViewmodel(gun, equipped)
 
 		local baseStats = require(equipped.SPH_Weapon.WeaponStats)
-		attachmentManager.StoreOriginalStats(equipped, baseStats)
-		wepStats = attachmentManager.ApplyAttachmentStats(equipped, gun)
+		attachmentSystem.StoreBaseStats(equipped, baseStats)
+		wepStats = attachmentSystem.ApplyStats(equipped, gun)
 		vars.wepStats = wepStats
 
 		local baseWalkSpeed2 = config.walkSpeed or 16
@@ -355,28 +355,16 @@ function WeaponEquipMod.EquipWeapon(newChild)
 	end
 	
 	if aimingSystemMod and vars.wepStats then
-		aimingSystemMod.UpdateADSVisual(gun, vars.wepStats, vars.sightIndex, vars.aiming == true, attachmentManager)
+		aimingSystemMod.UpdateADSVisual(gun, vars.wepStats, vars.sightIndex, vars.aiming == true, attachmentSystem)
 	end
 
-	attachmentManager.DebugMuzzleState(gun)
+	attachmentSystem.DescribeMuzzle(gun)
 
-	local active = attachmentManager.GetActiveAttachments(gun)
-	local autoLaser = false
-	local autoFlashlight = false
-	local silencerVolumeMult = 1
-
-	for _, data in pairs(active) do
-		local cfg = data.config
-		if cfg.EnableLaser then
-			autoLaser = true
-		end
-		if cfg.EnableFlashlight then
-			autoFlashlight = true
-		end
-		if cfg.EnableSilencer then
-			silencerVolumeMult = math.min(silencerVolumeMult, cfg.SilencerVolumeMultiplier or 1)
-		end
-	end
+	-- Capability questions now go through the attachment system rather than
+	-- reading each fitted attachment's config table here.
+	local autoLaser      = attachmentSystem.HasLaser(gun)
+	local autoFlashlight = attachmentSystem.HasFlashlight(gun)
+	local silencerVolumeMult = attachmentSystem.GetSilencerVolumeMultiplier(gun)
 	if silencerVolumeMult < 1 then
 		equipped:SetAttribute("FireVolumeMultiplier", silencerVolumeMult)
 	else

@@ -146,7 +146,7 @@ local function ApplyLaserGlareState(fpLaserSource, enabled, laserColor)
 	local tpLaserSource = nil
 	if deps.getThirdPersonGunModel then
 		local tpGunModel = deps.getThirdPersonGunModel()
-		tpLaserSource = tpGunModel and deps.attachmentManager.GetLaserSource(tpGunModel)
+		tpLaserSource = tpGunModel and deps.attachmentSystem.GetLaserSource(tpGunModel)
 	end
 	deps.glareMod.SetLaserModelActive(fpLaserSource, tpLaserSource, vars.firstPerson, enabled, laserColor)
 end
@@ -164,7 +164,7 @@ function LaserSightMod.ToggleLocalLaser()
 	if vars.togglingAttachment or deps.isAnimationBusy() or vars.sprinting
 		or vars.holdStance ~= 0 or fireAnimPlaying then return end
 
-	local laserSource = deps.attachmentManager.GetLaserSource(gunModel)
+	local laserSource = deps.attachmentSystem.GetLaserSource(gunModel)
 
 	if wepStats.activateFlashlightLaser and not deps.isAnimationBusy() then
 		vars.togglingAttachment = true
@@ -212,7 +212,7 @@ function LaserSightMod.ToggleLocalLaser()
 		vars.laserEnabled = not vars.laserEnabled
 		deps.playRepSound("Button")
 		deps.playerToggleAttachment.send({ AttachmentType = 1, Enabled = vars.laserEnabled })
-		local laserSource = deps.attachmentManager.GetLaserSource(gunModel)
+		local laserSource = deps.attachmentSystem.GetLaserSource(gunModel)
 		local laserColor = Color3.fromRGB(255, 30, 30)
 		if laserSource and laserSource:FindFirstChild("Color") then
 			laserColor = laserSource.Color.Value
@@ -231,7 +231,7 @@ function LaserSightMod.UpdateLocalLaser()
 	local gunModel = vars.gunModel
 
 	if vars.laserEnabled and equipped then
-		local laserStillPresent = gunModel.Grip:FindFirstChild("Laser") or deps.attachmentManager.HasLaserAttachment(gunModel)
+		local laserStillPresent = gunModel.Grip:FindFirstChild("Laser") or deps.attachmentSystem.HasLaser(gunModel)
 		if not laserStillPresent then
 			vars.laserEnabled = false
 			laserDotPart.CFrame = deps.storageCFrame
@@ -242,9 +242,9 @@ function LaserSightMod.UpdateLocalLaser()
 	end
 
 	if equipped and vars.laserEnabled then
-		local fpLaserSourceSync = deps.attachmentManager.GetLaserSource(gunModel)
+		local fpLaserSourceSync = deps.attachmentSystem.GetLaserSource(gunModel)
 		local tpModelSync = deps.getThirdPersonGunModel and deps.getThirdPersonGunModel()
-		local tpLaserSourceSync = tpModelSync and deps.attachmentManager.GetLaserSource(tpModelSync)
+		local tpLaserSourceSync = tpModelSync and deps.attachmentSystem.GetLaserSource(tpModelSync)
 		if deps.glareMod and (fpLaserSourceSync or tpLaserSourceSync) then
 			local syncColor = (fpLaserSourceSync and fpLaserSourceSync:FindFirstChild("Color") and fpLaserSourceSync.Color.Value)
 				or (tpLaserSourceSync and tpLaserSourceSync:FindFirstChild("Color") and tpLaserSourceSync.Color.Value)
@@ -253,7 +253,7 @@ function LaserSightMod.UpdateLocalLaser()
 		end
 
 		if not laserBeamFP.Enabled and not laserBeamTP.Enabled then
-			local laserSrc = deps.attachmentManager.GetLaserSource(gunModel)
+			local laserSrc = deps.attachmentSystem.GetLaserSource(gunModel)
 			local laserColor = (laserSrc and laserSrc:FindFirstChild("Color") and laserSrc.Color.Value)
 				or Color3.fromRGB(255, 30, 30)
 			laserDotPart.Color  = laserColor
@@ -264,10 +264,10 @@ function LaserSightMod.UpdateLocalLaser()
 
 		local laserPoint
 		if vars.firstPerson then
-			laserPoint = deps.attachmentManager.GetLaserSource(gunModel)
+			laserPoint = deps.attachmentSystem.GetLaserSource(gunModel)
 		else
 			local tpModel = deps.getThirdPersonGunModel()
-			laserPoint = tpModel and deps.attachmentManager.GetLaserSource(tpModel)
+			laserPoint = tpModel and deps.attachmentSystem.GetLaserSource(tpModel)
 		end
 
 		if laserPoint and laserPoint:IsA("Attachment") then

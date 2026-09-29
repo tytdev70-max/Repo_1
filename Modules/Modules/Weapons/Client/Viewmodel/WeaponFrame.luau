@@ -4,7 +4,7 @@ local Assets  = Modules.Parent
 local WeaponContext     = require(Modules.Weapons.Core.WeaponContext)
 local vars              = require(Modules.Weapons.Core.WeaponState).get()
 local config            = require(Assets.GameConfig)
-local attachmentManager = require(Modules.Weapons.Attachments.AttachmentManager)
+local attachmentSystem = require(Modules.ThirdParty.AttachmentSystem)
 local weaponPushback    = require(Modules.Weapons.Fire.WeaponPushbackMod)
 local ModelQueryCache   = require(Modules.Weapons.Core.ModelQueryCache)
 local camera            = workspace.CurrentCamera
@@ -341,7 +341,7 @@ local function updateSightReticles(dt: number)
 			local s = camera.FieldOfView / 100
 			sightUI.Size = UDim2.fromScale(s, s)
 		elseif sightUI.Name == "Reticle" then
-			local reticleConfig = attachmentManager.GetReticleConfig(vars.gunModel)
+			local reticleConfig = attachmentSystem.GetReticleConfig(vars.gunModel)
 
 			-- Determine base scale
 			local cachedScale = sightUI:GetAttribute("OriginalSize")
@@ -369,7 +369,7 @@ local function UpdateViewmodelPosition(dt: number)
 	applyBasePositionDt(dt)
 
 	-- Aim offset
-	local aimPart = attachmentManager.GetAttachmentAimPart(vars.gunModel, vars.sightIndex)
+	local aimPart = attachmentSystem.GetAimPart(vars.gunModel, vars.sightIndex)
 		or vars.gunModel:FindFirstChild("AimPart" .. vars.sightIndex)
 		or vars.gunModel.AimPart
 

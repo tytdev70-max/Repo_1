@@ -2,7 +2,7 @@ local Modules = script:FindFirstAncestor("Modules")
 
 local WeaponContext         = require(Modules.Weapons.Core.WeaponContext)
 local vars                  = require(Modules.Weapons.Core.WeaponState).get()
-local attachmentManager     = require(Modules.Weapons.Attachments.AttachmentManager)
+local attachmentSystem     = require(Modules.ThirdParty.AttachmentSystem)
 local reticleMotionBlurMod  = require(Modules.Weapons.Aiming.ReticleMotionBlurMod)
 local ModelQueryCache       = require(Modules.Weapons.Core.ModelQueryCache)
 local ContentProvider       = game:GetService("ContentProvider")
@@ -159,7 +159,7 @@ local function SetAllSightSurfaceGuis(enabled: boolean)
 		applyToModel(vars.gunModel, false)
 	end
 
-	for _, data in attachmentManager.GetActiveAttachments(vars.gunModel) or {} do
+	for _, data in attachmentSystem.GetActive(vars.gunModel) or {} do
 		if data and data.model then
 			applyToModel(data.model, false)
 		end
@@ -207,7 +207,7 @@ local function CollectAndManageSights(gunModel: Instance)
 
 	collectReticles(gunModel, true)
 
-	for _, data in attachmentManager.GetActiveAttachments(gunModel) or {} do
+	for _, data in attachmentSystem.GetActive(gunModel) or {} do
 		if data.model then
 			collectReticles(data.model, true)
 		end
@@ -229,11 +229,11 @@ local function ApplySavedAttachmentsToViewmodel(gunModel: Instance, tool: Instan
 	local savedAttachments = tool:FindFirstChild("SavedAttachments")
 	if not savedAttachments then return end
 
-	attachmentManager.ClearAllAttachments(gunModel)
+	attachmentSystem.ClearAll(gunModel)
 
 	for _, attachmentData in savedAttachments:GetChildren() do
 		if attachmentData:IsA("StringValue") and attachmentData.Value ~= "" then
-			local success = attachmentManager.EquipAttachment(
+			local success = attachmentSystem.Equip(
 				player,
 				tool,
 				gunModel,

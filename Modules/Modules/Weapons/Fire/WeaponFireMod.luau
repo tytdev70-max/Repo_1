@@ -9,7 +9,7 @@ local rayParams
 local config
 local tweenService
 local shootBlur
-local attachmentManager
+local attachmentSystem
 local bulletHandler
 local player
 local playerGui
@@ -52,7 +52,7 @@ function WeaponFireMod.Init(deps)
 	config = deps.config
 	tweenService = deps.tweenService
 	shootBlur = deps.shootBlur
-	attachmentManager = deps.attachmentManager
+	attachmentSystem = deps.attachmentSystem
 	bulletHandler = deps.bulletHandler
 	player = deps.player
 	playerGui = deps.playerGui
@@ -98,7 +98,7 @@ local function UpdateOverheat(dt: number)
 	local gunModel = vars.gunModel
 
 	if equipped and wepStats and gunModel then
-		local attachmentHeatConfig = attachmentManager.GetOverheatConfig(gunModel)
+		local attachmentHeatConfig = attachmentSystem.GetOverheatConfig(gunModel)
 		local heatConfig = attachmentHeatConfig or wepStats.overHeating
 
 		if heatConfig and heatConfig.Enabled then
@@ -134,7 +134,7 @@ local function UpdateOverheat(dt: number)
 					if not model then return end
 
 					local grip = model:FindFirstChild("Grip")
-					local activeMuzzle = attachmentManager.GetActiveMuzzle(model)
+					local activeMuzzle = attachmentSystem.GetMuzzle(model)
 						or (grip and (grip:FindFirstChild("Muzzle") or grip))
 
 					for _, emitter in ipairs(model:GetDescendants()) do
@@ -233,7 +233,7 @@ local function UpdateFireLoop(dt: number)
 			vars.ejected = false
 			vars.lastReloadCompletedTime = 0
 
-			local heatConfig = attachmentManager.GetOverheatConfig(gunModel) or wepStats.overHeating
+			local heatConfig = attachmentSystem.GetOverheatConfig(gunModel) or wepStats.overHeating
 			if heatConfig and heatConfig.Enabled then
 				vars.currentHeat = vars.currentHeat + heatConfig.HeatPerShot
 				vars.lastShotTime = tick()
@@ -381,8 +381,9 @@ local function UpdateFireLoop(dt: number)
 			end
 			local isAutoFire = (curFireMode == fireModes.Auto)
 
-			local isSuppressed = attachmentManager.HasAttachment(gunModel, "Muzzle") and
-				attachmentManager.GetActiveAttachments(gunModel)["Muzzle"].config.EnableSilencer or false
+			-- The attachment system owns the suppressor question; SPH no longer
+			-- inspects a fitted muzzle's config directly.
+			local isSuppressed = attachmentSystem.IsSuppressed(gunModel)
 
 			bulletHandler.FireFX(player, tempGunModel, "Muzzle", wepStats.muzzleChance, nil, isAutoFire, isSuppressed)
 

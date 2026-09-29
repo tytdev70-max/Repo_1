@@ -4,9 +4,8 @@ local Assets = Modules.Parent
 local WeaponContext = require(Modules.Weapons.Core.WeaponContext)
 local vars = require(Modules.Weapons.Core.WeaponState).get()
 local config = require(Assets.GameConfig)
-local assets = Assets
 local animations = Assets.Animations
-local attachmentManager = require(Modules.Weapons.Attachments.AttachmentManager)
+local attachmentSystem = require(Modules.ThirdParty.AttachmentSystem)
 local grenadeClient = require(Modules.Misc.Grenades.GrenadeClient)
 local armPositionMod = require(Modules.Weapons.Aiming.ArmPositionMod)
 local ubglSystem = require(Modules.Weapons.Attachments.UBGLHandlerMod)
@@ -107,29 +106,9 @@ end
 
 PlayRepSound = function(soundName)
 	if not vars.dead then
-		local isSuppressed = false
-		if vars.equipped then
-			local savedAttachments = vars.equipped:FindFirstChild("SavedAttachments")
-			if savedAttachments then
-				local muzzleData = savedAttachments:FindFirstChild("Muzzle")
-				if muzzleData and muzzleData:IsA("StringValue") then
-					local attachmentName = muzzleData.Value
-					local categoryFolder = assets.GunAttachments:FindFirstChild("Muzzle")
-					if categoryFolder then
-						local attachmentFolder = categoryFolder:FindFirstChild(attachmentName)
-						if attachmentFolder then
-							local customizationModule = attachmentFolder:FindFirstChild("Customization")
-							if customizationModule then
-								local config = require(customizationModule)
-								if config.EnableSilencer then
-									isSuppressed = true
-								end
-							end
-						end
-					end
-				end
-			end
-		end
+		-- The attachment system owns suppressor detection; SPH just asks.
+		local isSuppressed = vars.equipped ~= nil
+			and attachmentSystem.IsSuppressed(vars.equipped)
 
 		if isSuppressed then
 			if soundName == "Fire" or soundName == "AutoFire" then

@@ -26,12 +26,10 @@ Constants.LPVO_STATES = {
 	Exit   = true,
 }
 
-Constants.ATTACHMENT_CATEGORIES = {
-	Optics      = true,
-	Underbarrel = true,
-	Muzzle      = true,
-	Stock       = true,
-}
+-- Attachment categories are no longer declared here. They are owned by the
+-- standalone provider at Modules/ThirdParty/AttachmentSystem (see
+-- `Config.Categories`), which the server asks through
+-- `attachmentSystem.IsValidRequest(...)` instead of keeping a second copy.
 
 Constants.SERVER_SKIPPED_SOUND_NAMES = {
 	Fire             = true,

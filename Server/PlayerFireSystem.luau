@@ -5,11 +5,12 @@
 local AssetRefs      = require(script.Parent.AssetRefs)
 local GunSetupSystem = require(script.Parent.GunSetupSystem)
 
-local assets           = AssetRefs.assets
 local Network          = AssetRefs.Network
 local NetworkRangeUtil = AssetRefs.NetworkRangeUtil
 local config           = AssetRefs.config
 local warnPrefix       = AssetRefs.warnPrefix
+-- Attachment questions are answered by the standalone attachment provider.
+local attachmentSystem = AssetRefs.attachmentSystem
 
 local PlayerFireSystem = {}
 
@@ -25,28 +26,10 @@ function PlayerFireSystem.PlayerFire(player: Player, firePoint: CFrame, pelletDi
 	local gunAmmo  = tool.Ammo
 	local magAmmo  = gunAmmo.MagAmmo
 
-	-- Suppressor detection
-	local isSuppressed     = false
-	local savedAttachments = tool:FindFirstChild("SavedAttachments")
-	if savedAttachments then
-		local muzzleData = savedAttachments:FindFirstChild("Muzzle")
-		if muzzleData and muzzleData:IsA("StringValue") and muzzleData.Value ~= "" then
-			local attachmentName    = muzzleData.Value
-			local categoryFolder    = assets.GunAttachments:FindFirstChild("Muzzle")
-			if categoryFolder then
-				local attachmentFolder = categoryFolder:FindFirstChild(attachmentName)
-				if attachmentFolder then
-					local customizationModule = attachmentFolder:FindFirstChild("Customization")
-					if customizationModule then
-						local success, cfg = pcall(require, customizationModule)
-						if success and cfg and cfg.EnableSilencer then
-							isSuppressed = true
-						end
-					end
-				end
-			end
-		end
-	end
+	-- Suppressor detection. The attachment system owns this: it reads the
+	-- saved loadout and the muzzle definition, and is the single place that
+	-- knows what "suppressed" means.
+	local isSuppressed = attachmentSystem.IsSuppressed(tool)
 
 	-- Ammo / bolt state
 	if wepStats.fireMode == 4 then

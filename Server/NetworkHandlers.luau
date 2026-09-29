@@ -20,7 +20,7 @@ local config             = AssetRefs.config
 local Network            = AssetRefs.Network
 local NetworkRangeUtil   = AssetRefs.NetworkRangeUtil
 local MaterialCodec      = AssetRefs.MaterialCodec
-local attachmentManager  = AssetRefs.attachmentManager
+local attachmentSystem  = AssetRefs.attachmentSystem
 local grenadeHandler     = AssetRefs.grenadeHandler
 local glassShatterMod    = AssetRefs.glassShatterMod
 local HitResolutionMod   = AssetRefs.HitResolutionMod
@@ -34,7 +34,9 @@ local FOOTSTEP_REPLICATION_RANGE = Constants.FOOTSTEP_REPLICATION_RANGE
 local FALL_SOUND_PITCH_VARIANCE  = Constants.FALL_SOUND_PITCH_VARIANCE
 local ARM_PACKET_IGNORE_DURATION = Constants.ARM_PACKET_IGNORE_DURATION
 local LPVO_STATES                = Constants.LPVO_STATES
-local ATTACHMENT_CATEGORIES      = Constants.ATTACHMENT_CATEGORIES
+-- NOTE: attachment categories are owned by ThirdParty.AttachmentSystem now;
+-- the server validates requests through its public API instead of keeping a
+-- second copy of the category set here.
 local SERVER_SKIPPED_SOUND_NAMES = Constants.SERVER_SKIPPED_SOUND_NAMES
 local GRIP_TARGET_EPSILON        = Constants.GRIP_TARGET_EPSILON
 
@@ -67,7 +69,7 @@ local EnsureArmLerpHeartbeat = ArmLerpSystem.EnsureArmLerpHeartbeat
 
 local function SetOverheatEffectActive(model: Model, enable: boolean, heatEffectName: string)
 	if not model then return end
-	local activeMuzzle = attachmentManager.GetActiveMuzzle(model)
+	local activeMuzzle = attachmentSystem.GetMuzzle(model)
 		or model.Grip:FindFirstChild("Muzzle")
 		or model.Grip
 	for _, emitter in ipairs(model:GetDescendants()) do
@@ -346,7 +348,7 @@ function NetworkHandlers.init()
 		local tool = player.Character:FindFirstChildWhichIsA("Tool")
 		if not tool or not tool:FindFirstChild("SPH_Weapon") then return end
 		local wepStats = require(tool.SPH_Weapon.WeaponStats)
-		local attachmentHeatConfig = attachmentManager.GetOverheatConfig(weapon)
+		local attachmentHeatConfig = attachmentSystem.GetOverheatConfig(weapon)
 		local heatConfig = attachmentHeatConfig or wepStats.overHeating
 		if not heatConfig or not heatConfig.Enabled then return end
 		SetOverheatEffectActive(weapon, shouldEnable, heatConfig.heatEffectName)
@@ -605,7 +607,7 @@ function NetworkHandlers.init()
 		local weapon = weaponFolder:FindFirstChildWhichIsA("Model")
 		if not weapon then return end
 		if attachmentType == 0 then
-			local flashlightPart = attachmentManager.GetFlashlightSource(weapon)
+			local flashlightPart = attachmentSystem.GetFlashlightSource(weapon)
 			if flashlightPart then
 				Network.packets.ToggleAttachmentReplicate.sendToAllExcept({
 					LaserPart      = flashlightPart,
@@ -614,7 +616,7 @@ function NetworkHandlers.init()
 				}, player)
 			end
 		elseif attachmentType == 1 then
-			local laserPart = attachmentManager.GetLaserSource(weapon)
+			local laserPart = attachmentSystem.GetLaserSource(weapon)
 			if laserPart then
 				Network.packets.ToggleAttachmentReplicate.sendToAllExcept({
 					LaserPart      = laserPart,
@@ -859,31 +861,34 @@ function NetworkHandlers.init()
 		local encodedOk, encodedAttachments = pcall(HttpService.JSONEncode, HttpService, selectedAttachments)
 		if encodedOk then print("[Server] Attachments:", encodedAttachments) end
 
-		attachmentManager.ClearAllAttachments(weaponModel)
-		local savedAttachments = tool:FindFirstChild("SavedAttachments")
-		if savedAttachments then savedAttachments:Destroy() end
-		savedAttachments        = Instance.new("Folder")
-		savedAttachments.Name   = "SavedAttachments"
-		savedAttachments.Parent = tool
-
+		-- Reject what the attachment system would reject, and let it own the
+		-- definition of a well-formed request (category set, name length).
+		local accepted = {}
 		for category, attachmentName in pairs(selectedAttachments) do
-			if type(category) ~= "string" or not ATTACHMENT_CATEGORIES[category] then continue end
-			if type(attachmentName) ~= "string" or attachmentName == "" or #attachmentName > 64 then continue end
-			local success = attachmentManager.EquipAttachment(player, tool, weaponModel, attachmentName, category)
-			if success then
-				print("[Server]   Applied", attachmentName, "to", category)
-				local dataValue = savedAttachments:FindFirstChild(category)
-				if not dataValue then
-					dataValue = Instance.new("StringValue")
-					dataValue.Name   = category
-					dataValue.Parent = savedAttachments
-				end
-				dataValue.Value = attachmentName
-			else
-				warn("[Server] Failed to apply", attachmentName)
+			if attachmentSystem.IsValidRequest(attachmentName, category)
+				and attachmentSystem.IsCompatible(attachmentName, category, tool.Name) then
+				accepted[category] = attachmentName
 			end
 		end
-		print("[Server]   All attachments applied and saved")
+
+		local fitted, failed = attachmentSystem.ApplyLoadout(player, tool, weaponModel, accepted)
+		if failed and failed > 0 then
+			warn(string.format("[Server] %d attachment(s) failed to apply for %s",
+				failed, player.Name))
+		end
+
+		-- Only persist what actually fitted, so the saved loadout can never
+		-- describe attachments the weapon is not wearing.
+		local persisted = {}
+		for category in pairs(accepted) do
+			if attachmentSystem.Has(weaponModel, category) then
+				persisted[category] = accepted[category]
+			end
+		end
+		attachmentSystem.SetSaved(tool, persisted)
+
+		print(string.format("[Server]   Applied %d attachment(s) for %s",
+			fitted or 0, player.Name))
 		RefreshPlayerArmReplication(player)
 	end)
 

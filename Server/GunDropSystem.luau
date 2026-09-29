@@ -9,7 +9,7 @@ local GunSetupSystem = require(script.Parent.GunSetupSystem)
 
 local assets            = AssetRefs.assets
 local weldMod           = AssetRefs.weldMod
-local attachmentManager = AssetRefs.attachmentManager
+local attachmentSystem = AssetRefs.attachmentSystem
 local config            = AssetRefs.config
 local proxPromptService = ServiceRefs.proxPromptService
 
@@ -126,21 +126,13 @@ function GunDropSystem.SpawnGun(tool, gunPosition, dropPlayer)
 	end
 
 	GunDropSystem.MakePickUpAble(tool, dropModel, dropModel.Grip)
-	attachmentManager.PrepareForEquip(dropModel)
 
-	if tool:FindFirstChild("SavedAttachments") then
-		for _, attachmentData in ipairs(tool.SavedAttachments:GetChildren()) do
-			if attachmentData:IsA("StringValue") and attachmentData.Value ~= "" then
-				local category       = attachmentData.Name
-				local attachmentName = attachmentData.Value
-				local success = attachmentManager.EquipAttachment(nil, tool, dropModel, attachmentName, category)
-				if success then
-					print("[Server] Preserved attachment on dropped gun:", attachmentName, category)
-				else
-					warn("[Server] Failed to preserve attachment:", attachmentName, category)
-				end
-			end
-		end
+	-- Keep the dropped gun's attachments, so a picked-up weapon looks the same
+	-- as it did when it left the previous owner's hands.
+	local _fitted, failed = attachmentSystem.ApplySavedLoadout(nil, tool, dropModel)
+	if failed and failed > 0 then
+		warn(string.format("[Server] %d attachment(s) failed to preserve on dropped gun",
+			failed))
 	end
 
 	local projectile    = dropModel:FindFirstChild(wepStats.projectile)

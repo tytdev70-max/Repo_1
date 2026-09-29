@@ -9,7 +9,7 @@ local ServerHelpers = require(script.Parent.ServerHelpers)
 local assets            = AssetRefs.assets
 local modules           = AssetRefs.modules
 local weldMod           = AssetRefs.weldMod
-local attachmentManager = AssetRefs.attachmentManager
+local attachmentSystem = AssetRefs.attachmentSystem
 local Network           = AssetRefs.Network
 local NetworkRangeUtil  = AssetRefs.NetworkRangeUtil
 local ubglHandler       = AssetRefs.ubglHandler
@@ -180,24 +180,15 @@ function GunSetupSystem.EquipGun(rig: Model, tool: Tool, equipPlayer: Player)
 			end
 		end
 
-		attachmentManager.ClearAllAttachments(gun)
-		attachmentManager.PrepareForEquip(gun)
-
-		if tool:FindFirstChild("SavedAttachments") then
-			for _, attachmentData in ipairs(tool.SavedAttachments:GetChildren()) do
-				if attachmentData:IsA("StringValue") and attachmentData.Value ~= "" then
-					local category       = attachmentData.Name
-					local attachmentName = attachmentData.Value
-					local success = attachmentManager.EquipAttachment(
-						players:GetPlayerFromCharacter(rig.Parent),
-						tool, gun, attachmentName, category)
-					if success then
-						print("[Server] Applied", attachmentName, "to TP model")
-					else
-						warn("[Server] Failed to apply", attachmentName, "to TP model")
-					end
-				end
-			end
+		-- The attachment system reads the tool's saved loadout and fits it.
+		local fitted, failed = attachmentSystem.ApplySavedLoadout(
+			players:GetPlayerFromCharacter(rig.Parent), tool, gun)
+		if failed and failed > 0 then
+			warn(string.format("[Server] %d attachment(s) failed to apply to TP model",
+				failed))
+		end
+		if fitted and fitted > 0 then
+			print(string.format("[Server] Applied %d attachment(s) to TP model", fitted))
 		end
 
 		if rig.AnimBase:FindFirstChild("GunMotor") then

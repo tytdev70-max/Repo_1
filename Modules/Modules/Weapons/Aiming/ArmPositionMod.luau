@@ -6,7 +6,7 @@ local animBase
 local rig
 local camera
 local defaultFOV
-local attachmentManager
+local attachmentSystem
 local ubglSystem
 local playRepSound
 local repLPVORing
@@ -43,23 +43,17 @@ local function FindArmMotorByName(armName: string): Motor6D?
 end
 ArmPositionMod.FindArmMotorByName = FindArmMotorByName
 
+--[[
+	A magnified optic can supply its own lever ring, so the actuator has to
+	prefer the fitted optic's part over the weapon's own. The attachment system
+	owns that resolution rule.
+]]
 local function FindLeverRingPart(gunModel: Model, leverRingName: string): BasePart?
 	if not leverRingName then return nil end
-
-	local activeAttachments = attachmentManager.GetActiveAttachments(gunModel)
-	local opticsAttachment = activeAttachments and activeAttachments["Optics"]
-	if opticsAttachment and opticsAttachment.model then
-		local attachmentLever = opticsAttachment.model:FindFirstChild(leverRingName, true)
-		if attachmentLever and attachmentLever:IsA("BasePart") then
-			return attachmentLever
-		end
+	local lever = attachmentSystem.GetLeverRingPart(gunModel, leverRingName)
+	if lever and lever:IsA("BasePart") then
+		return lever
 	end
-
-	local baseLever = gunModel:FindFirstChild(leverRingName)
-	if baseLever and baseLever:IsA("BasePart") then
-		return baseLever
-	end
-
 	return nil
 end
 ArmPositionMod.FindLeverRingPart = FindLeverRingPart
@@ -86,7 +80,7 @@ function ArmPositionMod.Init(deps)
 	rig = deps.rig
 	camera = deps.camera
 	defaultFOV = deps.defaultFOV
-	attachmentManager = deps.attachmentManager
+	attachmentSystem = deps.attachmentSystem
 	ubglSystem = deps.ubglSystem
 
 
@@ -148,7 +142,7 @@ local function UpdateLPVO(dt: number)
 				local armName = wepStats.LPVOZoom.armToMove or "Right Arm"
 				local armMotor = FindArmMotorByName(armName)
 
-				local hasGrip = attachmentManager.HasGripEquipped(gunModel)
+				local hasGrip = attachmentSystem.HasGrip(gunModel)
 
 				if wepStats.LPVOZoom.moveArm == true then
 					if armMotor then
@@ -318,7 +312,7 @@ local function UpdateLPVO(dt: number)
 			end
 		end
 
-		local hasGrip = attachmentManager.HasGripEquipped(gunModel)
+		local hasGrip = attachmentSystem.HasGrip(gunModel)
 
 		if hasGrip and vars.lpvoServerInteractionActive then
 			vars.lpvoServerInteractionActive = false
@@ -395,7 +389,7 @@ local function UpdateGripHand(dt: number)
 	local reloading = vars.reloading
 
 	if equipped and gunModel then
-		local gripData = attachmentManager.GetGripHandPosition(gunModel, equipped.Name)
+		local gripData = attachmentSystem.GetGrip(gunModel, equipped.Name)
 
 		if gripData then
 			local armName = gripData.handToPosition or "Left Arm"

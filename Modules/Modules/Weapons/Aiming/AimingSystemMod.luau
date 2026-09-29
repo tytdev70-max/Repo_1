@@ -23,7 +23,7 @@ function AimingSystemMod.Init(dependencies)
 	lastSentSightIndex = nil
 end
 
-function AimingSystemMod.ApplyADSVisual(gunModel, toggle, wepStats, attachmentManager)
+function AimingSystemMod.ApplyADSVisual(gunModel, toggle, wepStats, attachmentSystem)
 	if not gunModel or not wepStats or not wepStats.ADSEnabled then return end
 
 	local ADSTween
@@ -44,22 +44,22 @@ function AimingSystemMod.ApplyADSVisual(gunModel, toggle, wepStats, attachmentMa
 	end
 end
 
-function AimingSystemMod.UpdateADSVisual(gunModel, wepStats, sightIndex, aiming, attachmentManager)
+function AimingSystemMod.UpdateADSVisual(gunModel, wepStats, sightIndex, aiming, attachmentSystem)
 	if not gunModel or not wepStats then return end
 	if wepStats.ADSEnabled and wepStats.ADSEnabled[sightIndex] then
-		AimingSystemMod.ApplyADSVisual(gunModel, aiming, wepStats, attachmentManager)
+		AimingSystemMod.ApplyADSVisual(gunModel, aiming, wepStats, attachmentSystem)
 	else
-		AimingSystemMod.ApplyADSVisual(gunModel, false, wepStats, attachmentManager)
+		AimingSystemMod.ApplyADSVisual(gunModel, false, wepStats, attachmentSystem)
 	end
 
-	if attachmentManager and attachmentManager.ApplyAttachmentADSVisibility then
-		attachmentManager.ApplyAttachmentADSVisibility(gunModel, aiming, wepStats)
+	if attachmentSystem and attachmentSystem.ApplyADSVisibility then
+		attachmentSystem.ApplyADSVisibility(gunModel, aiming, wepStats)
 	end
 end
 
 local function SetAllSightSurfaceGuis(enabled)
 	local gunModel = vars.gunModel
-	local attachmentManager = deps.attachmentManager
+	local attachmentSystem = deps.attachmentSystem
 
 	if gunModel then
 		for _, part in ipairs(gunModel:GetDescendants()) do
@@ -70,7 +70,7 @@ local function SetAllSightSurfaceGuis(enabled)
 		end
 	end
 
-	local activeAttachments = attachmentManager.GetActiveAttachments(gunModel)
+	local activeAttachments = attachmentSystem.GetActive(gunModel)
 	for _, data in pairs(activeAttachments or {}) do
 		if data and data.model then
 			for _, part in ipairs(data.model:GetDescendants()) do
@@ -218,7 +218,7 @@ function AimingSystemMod.ToggleAiming(toggle)
 		aimVignette.SetAiming(true)
 		deps.mobileSupport.UpdateLPVOButtonVisibility()
 
-		AimingSystemMod.UpdateADSVisual(gunModel, wepStats, sightIndex, true, deps.attachmentManager)
+		AimingSystemMod.UpdateADSVisual(gunModel, wepStats, sightIndex, true, deps.attachmentSystem)
 		SetAllSightSurfaceGuis(true)
 
 		deps.userInputService.MouseDeltaSensitivity = vars.aimSensitivity
@@ -250,7 +250,7 @@ function AimingSystemMod.ToggleAiming(toggle)
 			vars.isAimDoFActive = true
 			deps.aimDoF.Enabled = true
 
-			local opticDOF = deps.attachmentManager.GetDepthOfFieldConfig(gunModel)
+			local opticDOF = deps.attachmentSystem.GetDepthOfFieldConfig(gunModel)
 			local dofConfig = opticDOF or wepStats.DOF
 
 			if dofConfig then
@@ -266,7 +266,7 @@ function AimingSystemMod.ToggleAiming(toggle)
 	else
 		vars.aiming = false
 		aimVignette.SetAiming(false)
-		AimingSystemMod.UpdateADSVisual(gunModel, wepStats, sightIndex, false, deps.attachmentManager)
+		AimingSystemMod.UpdateADSVisual(gunModel, wepStats, sightIndex, false, deps.attachmentSystem)
 		deps.mobileSupport.UpdateLPVOButtonVisibility()
 		deps.userInputService.MouseDeltaSensitivity = 1
 		deps.playRepSound("AimDown")
