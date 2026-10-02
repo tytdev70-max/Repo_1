@@ -2,10 +2,19 @@
 	GlareMod
 	Screen glare / blinding from flashlights and lasers.
 
-	Viewer-facing thresholds and the exponential fade are unchanged. Exposure
-	additionally requires the beam to actually reach the receiver:
-	  - Laser:      only the head (or the camera's virtual eye) blinds.
-	  - Flashlight: the camera only has to be inside the beam volume (cone + aim tolerance).
+	Physically-motivated model:
+	  - The receiver is the viewer's EYE (a small sphere at the head's center),
+	    for both kinds. The body and the orbiting camera do not count.
+	  - Intensity is driven by the light's INCIDENCE at the eye (how on-axis it
+	    is in the viewer's visual field), not by where the viewer is staring
+	    relative to the source — a light aimed at the face blinds even when the
+	    gaze is elsewhere.
+	  - Adaptation is asymmetric: glare attacks fast and releases slow, and a
+	    lingering "adaptation" level (afterimage / elevated dark threshold)
+	    persists after the light is gone. Per-weapon BlindAttackTime /
+	    BlindReleaseTime (see WeaponLighting) tune both.
+	  - The local player's own lights (their gun's flashlights/lasers) never
+	    blind them, regardless of pose.
 ]]
 
 local Players = game:GetService("Players")
@@ -27,16 +36,25 @@ local EPSILON = 0.01
 -- Viewer-facing thresholds
 local FLASH_FALLBACK_ANGLE = 25
 local FLASH_RANGE_FALLBACK = 18
-local LASER_BLIND_ANGLE = 0.2 -- dot-product threshold
-
--- Flashlight: extra tolerance around the beam axis so a light pointed a few
--- studs past your head still blinds you. Override per weapon with BlindRadius.
-local FLASH_AIM_RADIUS = 3
 local FLASH_MAX_HALF_ANGLE = math.rad(80) -- keeps math.tan from exploding
 
--- Cameras are not raycastable Instances, so a small virtual eye target on the
--- laser axis stands in for the viewer's eyes.
-local LASER_CAMERA_RADIUS = 0.15
+-- The receiver of blinding is the local viewer's EYE: a small sphere at the
+-- head's center (the eyes sit on the head's front face). Neither the body nor
+-- the orbiting camera counts. Used by both kinds.
+local EYE_RADIUS = 0.3
+
+-- Retinal sensitivity: glare falls to zero this many degrees off the view
+-- axis (how on-axis the light must be in the viewer's visual field). Overridable
+-- per weapon via WeaponStats.BlindOffAxisAngleDeg.
+local OFF_AXIS_DEFAULT = { Laser = 12, Flashlight = 50 }
+
+-- Asymmetric adaptation time constants (seconds). Glare ATTACKS at the fast
+-- rate and RELEASES at the slow one; the lingering adaptation level also
+-- decays at the slow rate. Overridable per weapon via WeaponStats.
+local ADAPT_DEFAULT = {
+	Laser      = { attack = 0.06, release = 0.9 },
+	Flashlight = { attack = 0.25, release = 2.5 },
+}
 
 --------------------------------------------------------------------------------
 -- State
@@ -48,6 +66,10 @@ local sharedRayParams
 
 local registries = { Flashlight = {}, Laser = {} } -- [kind][source] = entry
 local effects = {} -- [kind] = effect
+
+-- Lingering ocular adaptation per kind (0..1). Rises while a light is in the
+-- eye, decays slowly after; drives the afterimage / elevated-threshold tail.
+local adaptation = { Flashlight = 0, Laser = 0 } -- [kind] = number
 
 --------------------------------------------------------------------------------
 -- Generic helpers
@@ -187,6 +209,15 @@ local function setSourceActive(kind, source, active, color, weaponStats)
 end
 
 local function setModelActive(kind, fpSource, tpSource, firstPerson, active, color, weaponStats)
+	-- Both rigs belong to the local player. Mark them so evaluation never
+	-- treats the viewer's own light as a threat: the viewmodel rig is
+	-- camera-parented, so a character-ancestor walk alone would miss it.
+	for _, source in ipairs({ fpSource, tpSource }) do
+		if source and source.Parent and not source:GetAttribute("SPH_LocalLight") then
+			source:SetAttribute("SPH_LocalLight", true)
+		end
+	end
+
 	-- Deactivate the rig that is not in use, activate the one that is.
 	setSourceActive(kind, if firstPerson then tpSource else fpSource, false)
 	setSourceActive(kind, if firstPerson then fpSource else tpSource, active, color, weaponStats)
@@ -269,14 +300,17 @@ local function getReceiverCharacter()
 	return nil
 end
 
--- A hit on the receiver's real body (not their tools, hats, or weapon rig).
-local function isReceiverBodyHit(hit, character)
-	local part = hit and hit.Instance
-	if not part or not part:IsA("BasePart") or not part:IsDescendantOf(character) then return false end
-
+-- True when the hit part belongs to the receiver's own body — the beam is
+-- then clear of them. Tool- and WeaponRig-ancestored parts are excluded (their
+-- own weapon can't block the beam reaching their own head); worn accessories
+-- DO count as occluders.
+local function isReceiverPart(part, character)
+	if not part or not part:IsA("BasePart") or not part:IsDescendantOf(character) then
+		return false
+	end
 	local ancestor = part.Parent
 	while ancestor and ancestor ~= character do
-		if ancestor:IsA("Tool") or ancestor:IsA("Accessory") or ancestor.Name == "WeaponRig" then
+		if ancestor:IsA("Tool") or ancestor.Name == "WeaponRig" then
 			return false
 		end
 		ancestor = ancestor.Parent
@@ -284,14 +318,50 @@ local function isReceiverBodyHit(hit, character)
 	return ancestor == character
 end
 
-local function isReceiverHeadHit(hit, character)
-	if not isReceiverBodyHit(hit, character) then return false end
+-- The receiver's eye: the head part's position (eyes sit on its front face).
+local function getEyePosition(character)
 	local head = character:FindFirstChild("Head")
-	return head ~= nil and hit.Instance == head
+	if not head or not head:IsA("BasePart") then
+		return nil
+	end
+	return head.Position, head
 end
 
--- Returns origin, forward direction, effective range and the SpotLight (flashlight only).
-local function getBeamAxis(source, kind, frame, settings)
+-- Is this light the local viewer's own weapon light? Their own beam cannot
+-- blind their own eyes — excluding it also stops the camera-parented
+-- viewmodel light from self-blinding during inspect poses.
+local function isOwnLight(source)
+	if source:GetAttribute("SPH_LocalLight") then
+		return true
+	end
+	local target = deps and deps.character
+	if not target then
+		return false
+	end
+	for ancestor in source:GetAncestry() do
+		if ancestor == target then
+			return true
+		end
+	end
+	return false
+end
+
+-- Does the beam physically reach the receiver's eye?
+--
+-- Laser: the eye must sit within EYE_RADIUS of the beam line, in front of the
+-- emitter and within range. A ray from the emitter through the eye is
+-- occluded only by a blocker in FRONT of where the beam enters the eye
+-- cylinder; a hit on the receiver's own head is the beam passing through the
+-- volume the eye itself occupies, so it counts as the beam hitting the eye,
+-- not as an occluder.
+--
+-- Flashlight: the eye must be inside the beam volume — the light cone
+-- (half-angle, capped so math.tan stays sane) plus the author-tuned
+-- BlindRadius plus EYE_RADIUS, so a beam aimed at the head still lands a few
+-- studs off it — with an unobstructed line of sight from the emitter. The
+-- receiver's own parts never block their own eyes.
+local function beamReachesEye(source, kind, frame, eyePos, head, character, settings)
+	local origin = frame.Position
 	local forward = frame.LookVector
 	local range = settings.BlindRange
 	local light
@@ -302,78 +372,77 @@ local function getBeamAxis(source, kind, frame, settings)
 		forward = frame:VectorToWorldSpace(WeaponLighting.GetFaceDirection(face))
 		range = math.min(range, settings.LightRange or (light and light.Range) or FLASH_RANGE_FALLBACK)
 	end
-
-	return frame.Position, forward, range, light
-end
-
-local function beamReachesReceiver(source, kind, frame, camPosition, settings)
-	local character = getReceiverCharacter()
-	if not character then return false end
-
-	local origin, forward, range, light = getBeamAxis(source, kind, frame, settings)
 	if range <= 0 then return false end
 
-	local params = getRayParams(source)
-	local hit = workspace:Raycast(origin, forward * range, params)
-	local toCamera = camPosition - origin
-	local along = forward:Dot(toCamera)
-
-	-- LASER: head / eyes only. Body hits do NOT blind.
-	if kind == "Laser" then
-		if isReceiverHeadHit(hit, character) then return true end
-
-		if along <= 0 or along > range then return false end
-		local offset = toCamera - forward * along
-		local offsetSquared = offset:Dot(offset)
-		local radiusSquared = LASER_CAMERA_RADIUS * LASER_CAMERA_RADIUS
-		if offsetSquared > radiusSquared then return false end
-
-		-- Empty space beyond the eye is fine; an earlier wall/player/body part is not.
-		local entryDistance = math.max(0, along - math.sqrt(radiusSquared - offsetSquared))
-		return not hit or (hit.Position - origin).Magnitude > entryDistance
-	end
-
-	-- FLASHLIGHT: camera inside the beam volume (cone + aim tolerance) with a clear line of sight.
-	if isReceiverBodyHit(hit, character) then return true end
+	local toEye = eyePos - origin
+	local along = forward:Dot(toEye)
 	if along <= 0 or along > range then return false end
 
-	local offset = (toCamera - forward * along).Magnitude
+	local params = getRayParams(source)
+
+	if kind == "Laser" then
+		local offset = toEye - forward * along
+		local offsetSquared = offset:Dot(offset)
+		local radiusSquared = EYE_RADIUS * EYE_RADIUS
+		if offsetSquared > radiusSquared then return false end
+
+		local distance = toEye.Magnitude
+		local hit = workspace:Raycast(origin, forward * (distance + 1), params)
+		if hit and hit.Instance == head then
+			-- Eye is inside the head volume: the beam hitting the head IS the
+			-- beam hitting the eye.
+			return true
+		end
+		-- A blocker only matters if it sits between the emitter and the point
+		-- where the beam enters the eye cylinder.
+		local entryDistance = math.max(0, along - math.sqrt(radiusSquared - offsetSquared))
+		return not hit or (hit.Position - origin).Magnitude > entryDistance + 0.001
+	end
+
+	-- Flashlight: eye inside the beam volume, with a clear line of sight.
+	local radialOffset = (toEye - forward * along).Magnitude
 	local angle = if light then light.Angle else FLASH_FALLBACK_ANGLE
 	local halfAngle = math.min(math.rad(angle * 0.5), FLASH_MAX_HALF_ANGLE)
-	local aimRadius = settings.BlindRadius or FLASH_AIM_RADIUS
+	local maxRadial = along * math.tan(halfAngle) + (settings.BlindRadius or 0) + EYE_RADIUS
+	if radialOffset > maxRadial then return false end
 
-	-- Allowed distance from the axis grows with distance (cone) plus a constant tolerance.
-	if offset > aimRadius + along * math.tan(halfAngle) then return false end
-
-	local cameraHit = workspace:Raycast(origin, toCamera, params)
-	return not cameraHit or isReceiverBodyHit(cameraHit, character)
+	local distance = toEye.Magnitude
+	local hit = workspace:Raycast(origin, forward * distance, params)
+	if not hit then return true end
+	return isReceiverPart(hit.Instance, character)
 end
 
 -- Returns 0..1 blind intensity, or nil when the source cannot blind the viewer.
 local function evaluateSource(source, kind, camCFrame, settings)
+	-- The local player's own lights cannot blind them.
+	if isOwnLight(source) then return nil end
+
+	local character = getReceiverCharacter()
+	if not character then return nil end
+	local eyePos, head = getEyePosition(character)
+	if not eyePos then return nil end
+
 	local frame = sourceCFrame(source)
 	if not frame then return nil end
 
-	local toSource = frame.Position - camCFrame.Position
+	local toSource = frame.Position - eyePos
 	local distance = toSource.Magnitude
 	if distance <= 0.01 or distance > settings.BlindRange then return nil end
 
-	-- Viewer must be looking roughly toward the source.
-	local threshold
-	if kind == "Flashlight" then
-		local light = WeaponLighting.GetSpotLight(source)
-		threshold = math.cos(math.rad(if light then light.Angle else FLASH_FALLBACK_ANGLE))
-	else
-		threshold = LASER_BLIND_ANGLE
-	end
-	local lookDot = camCFrame.LookVector:Dot(toSource / distance)
-	if lookDot <= threshold then return nil end
+	-- Incidence: how on-axis the light is in the viewer's VISUAL FIELD (angle
+	-- between gaze and the eye->source direction). A light aimed at the face
+	-- blinds even when the gaze is aimed elsewhere — what matters is where the
+	-- light lands, not where the viewer is staring.
+	local offAxisDeg = settings.BlindOffAxisAngleDeg or OFF_AXIS_DEFAULT[kind]
+	local cosMin = math.cos(math.rad(offAxisDeg))
+	local cosInc = camCFrame.LookVector:Dot(toSource / distance)
+	if cosInc <= cosMin then return nil end
 
-	if not beamReachesReceiver(source, kind, frame, camCFrame.Position, settings) then return nil end
+	if not beamReachesEye(source, kind, frame, eyePos, head, character, settings) then return nil end
 
-	local angleIntensity = (lookDot - threshold) / (1 - threshold)
+	local incidenceIntensity = ((cosInc - cosMin) / (1 - cosMin)) ^ 2
 	local distanceIntensity = (1 - distance / settings.BlindRange) ^ settings.BlindFalloff
-	return math.clamp(angleIntensity * distanceIntensity * settings.BlindIntensity, 0, 1)
+	return math.clamp(incidenceIntensity * distanceIntensity * settings.BlindIntensity, 0, 1)
 end
 
 --------------------------------------------------------------------------------
@@ -390,20 +459,31 @@ local function isCorrectionSettled(cc)
 		and math.abs(tint.B - 1) <= EPSILON
 end
 
-local function updateOverlay(effect, settings, intensity, alpha)
-	effect.opacity = fadeOpacity(effect.opacity, settings, intensity, alpha)
-	setImages(effect.images, effect.opacity, settings.BlindColor)
-	effect.billboard.Enabled = intensity > 0 or effect.opacity > 0
+-- Asymmetric attack/release: the overlay rises at BlindAttackTime and falls
+-- at BlindReleaseTime, so removing the light leaves a decaying afterglow
+-- tail instead of a symmetric fade.
+local function updateOverlay(effect, settings, intensity, dt)
+	local current = effect.opacity
+	local target = targetOpacity(settings, intensity)
+	local tau = if target >= current then math.max(settings.BlindAttackTime, 0.001) else math.max(settings.BlindReleaseTime, 0.001)
+	local alpha = 1 - math.exp(-dt / tau)
+	current += (target - current) * alpha
+	if intensity <= 0 and current <= EPSILON then current = 0 end
+	effect.opacity = current
+	setImages(effect.images, current, settings.BlindColor)
+	effect.billboard.Enabled = intensity > 0 or current > 0
 end
 
-local function updateColorCorrection(effect, settings, intensity, alpha)
+-- Driven by veil = max(intensity, adaptation): lingering ocular adaptation
+-- keeps a low-threshold afterimage tint even after the light has gone.
+local function updateColorCorrection(effect, settings, veil, alpha)
 	local cc = effect.correction
 	local config = settings.ColorCorrection
-	local correcting = intensity > 0 and config.Enabled
+	local correcting = veil > 0 and config.Enabled
 
-	local brightness = if correcting then config.Brightness * intensity else 0
-	local saturation = if correcting then config.Saturation * intensity else 0
-	local contrast = if correcting then config.Contrast * intensity else 0
+	local brightness = if correcting then config.Brightness * veil else 0
+	local saturation = if correcting then config.Saturation * veil else 0
+	local contrast = if correcting then config.Contrast * veil else 0
 	local tint = if correcting then config.TintColor else WHITE
 
 	cc.Brightness += (brightness - cc.Brightness) * alpha
@@ -420,8 +500,24 @@ local function updateColorCorrection(effect, settings, intensity, alpha)
 	end
 end
 
-local function applyEffect(effect, source, settings, intensity, dt)
-	-- Follow the strongest source; keep the last settings while fading out.
+-- Lingering ocular adaptation: rises at the attack time constant while a
+-- light is in the eye, decays slowly at the release one afterwards. Its
+-- value persists as the afterimage / elevated-threshold tail.
+local function stepAdaptation(kind, intensity, settings, dt)
+	local level = adaptation[kind]
+	local attack = settings.BlindAttackTime or ADAPT_DEFAULT[kind].attack
+	local release = settings.BlindReleaseTime or ADAPT_DEFAULT[kind].release
+	local tau = if intensity > 0 then math.max(attack, 0.02) else math.max(release, 0.1)
+	level += (math.min(intensity, 1) - level) * (1 - math.exp(-dt / tau))
+	if level < EPSILON then level = 0 end
+	adaptation[kind] = level
+	return level
+end
+
+local function applyEffect(kind, effect, source, settings, intensity, dt)
+	-- Follow the strongest source; keep the last settings (and the billboard's
+	-- last world origin) while fading out, so the afterimage lingers at the
+	-- position the light last shone from.
 	if source then
 		effect.settings = settings
 		effect.origin.WorldCFrame = sourceCFrame(source)
@@ -431,9 +527,10 @@ local function applyEffect(effect, source, settings, intensity, dt)
 	end
 
 	local active = effect.settings
+	local veil = math.max(intensity, stepAdaptation(kind, intensity, active, dt))
 	local alpha = fadeAlpha(active, dt)
-	updateOverlay(effect, active, intensity, alpha)
-	updateColorCorrection(effect, active, intensity, alpha)
+	updateOverlay(effect, active, intensity, dt)
+	updateColorCorrection(effect, active, veil, alpha)
 end
 
 local function updateSources(kind, camCFrame, dt)
@@ -462,7 +559,7 @@ local function updateSources(kind, camCFrame, dt)
 		end
 	end
 
-	applyEffect(effects[kind], bestSource, bestSettings, bestIntensity, dt)
+	applyEffect(kind, effects[kind], bestSource, bestSettings, bestIntensity, dt)
 end
 
 --------------------------------------------------------------------------------
@@ -507,6 +604,7 @@ function GlareMod.Cleanup()
 		end
 		destroyEffect(effects[kind])
 		effects[kind] = nil
+		adaptation[kind] = 0
 	end
 	camera = nil
 end

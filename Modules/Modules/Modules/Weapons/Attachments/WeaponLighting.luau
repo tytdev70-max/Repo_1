@@ -32,6 +32,11 @@ local KIND_DEFAULTS = {
 		FadeSpeed = 10,
 		Brightness = 0.5,
 		Saturation = 0,
+		-- Ocular adaptation: a laser stings instantly and recovers in under a
+		-- second; it only blinds when within ~12 degrees of the view axis.
+		BlindAttackTime = 0.06,
+		BlindReleaseTime = 0.9,
+		BlindOffAxisAngleDeg = 12,
 	},
 	Flashlight = {
 		BlindRange = 50,
@@ -39,6 +44,11 @@ local KIND_DEFAULTS = {
 		FadeSpeed = 9,
 		Brightness = 0.65,
 		Saturation = -0.4,
+		-- A floodlight takes longer to dazzle and leaves a longer tail; the
+		-- wide beam tolerates much more off-axis incidence.
+		BlindAttackTime = 0.25,
+		BlindReleaseTime = 2.5,
+		BlindOffAxisAngleDeg = 50,
 	},
 }
 
@@ -138,6 +148,13 @@ local function resolve(kind, source, weaponStats)
 		FadeSpeed = sanitizeNumber(config.FadeSpeed, defaults.FadeSpeed, 0.01, 1000),
 		-- Flashlight only: how far off-axis (studs) the beam may point and still dazzle. Nil = module default.
 		BlindRadius = sanitizeNumber(config.BlindRadius, nil, 0, 100),
+
+		-- Ocular adaptation (GlareMod): attack/release time constants (seconds)
+		-- and the off-axis angle (degrees) beyond which the light stops
+		-- blinding. Defaults are per-kind (see KIND_DEFAULTS).
+		BlindAttackTime = sanitizeNumber(config.BlindAttackTime, defaults.BlindAttackTime, 0.02, 1),
+		BlindReleaseTime = sanitizeNumber(config.BlindReleaseTime, defaults.BlindReleaseTime, 0.1, 8),
+		BlindOffAxisAngleDeg = sanitizeNumber(config.BlindOffAxisAngleDeg, defaults.BlindOffAxisAngleDeg, 5, 80),
 
 		ColorCorrection = {
 			Enabled = config.ColorCorrection ~= false and correction.Enabled ~= false,
