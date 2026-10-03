@@ -1,5 +1,6 @@
 local CustomizeGunGUI = {}
 local Modules = script:FindFirstAncestor("Modules")
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 
 function CustomizeGunGUI.Init(config)
 	local vars = require(Modules.Weapons.Core.WeaponState).get()
@@ -9,7 +10,6 @@ function CustomizeGunGUI.Init(config)
 	local assets = config.assets
 	local character = config.character
 	local humanoid = config.humanoid
-	local attachmentManager = config.attachmentManager
 	local mobileSupport = config.mobileSupport
 	local aimingSystemMod = config.aimingSystemMod
 	local recoilSpring = config.recoilSpring
@@ -73,24 +73,20 @@ function CustomizeGunGUI.Init(config)
 					print("[Client] Sent attachments to server:", selectedAttachments)
 				end
 
-				attachmentManager.ClearAllAttachments(gunModel)
-
-				for category, attachmentName in pairs(selectedAttachments) do
-					if attachmentName and attachmentName ~= "" then
-						attachmentManager.EquipAttachment(player, equipped, gunModel, attachmentName, category)
-					end
-				end
+				-- Mirror the server: same validation, then rebuild the viewmodel gun.
+				local localLoadout = Attachments:SanitizeLoadout(selectedAttachments, equipped)
+				Attachments:ApplyLoadout(gunModel, equipped, player, localLoadout)
 
 				collectAndManageSights(gunModel)
 
 				mobileSupport.UpdateMobileButtonVisibility()
 
 				if vars.laserEnabled then
-					local laserSource = attachmentManager.GetLaserSource(gunModel)
+					local laserSource = Attachments:GetLaserSource(gunModel)
 					local tpLaserSource
 					if getThirdPersonGunModel then
 						local tpGunModel = getThirdPersonGunModel()
-						tpLaserSource = tpGunModel and attachmentManager.GetLaserSource(tpGunModel)
+						tpLaserSource = tpGunModel and Attachments:GetLaserSource(tpGunModel)
 					end
 					if laserSource or tpLaserSource then
 						local laserColor = Color3.fromRGB(255, 30, 30)
@@ -112,7 +108,7 @@ function CustomizeGunGUI.Init(config)
 				end
 
 				if vars.flashlightEnabled then
-					local flashlightPart = attachmentManager.GetFlashlightSource(gunModel)
+					local flashlightPart = Attachments:GetFlashlightSource(gunModel)
 					if flashlightPart then
 						vars.flashFX.mod.SetEnabled(flashlightPart, true, vars.wepStats)
 					end
@@ -121,7 +117,7 @@ function CustomizeGunGUI.Init(config)
 					if getThirdPersonGunModel then
 						local tpGunModel = getThirdPersonGunModel()
 						if tpGunModel then
-							tpFlashlightPart = attachmentManager.GetFlashlightSource(tpGunModel)
+							tpFlashlightPart = Attachments:GetFlashlightSource(tpGunModel)
 							if tpFlashlightPart then
 								vars.flashFX.mod.SetEnabled(tpFlashlightPart, not vars.firstPerson, vars.wepStats)
 							end
@@ -142,8 +138,8 @@ function CustomizeGunGUI.Init(config)
 				end
 
 				local baseStats = require(equipped.SPH_Weapon.WeaponStats)
-				attachmentManager.StoreOriginalStats(equipped, baseStats)
-				local newWepStats = attachmentManager.ApplyAttachmentStats(equipped, gunModel)
+				Attachments:SetBaseStats(equipped, baseStats)
+				local newWepStats = Attachments:ComputeStats(equipped, gunModel)
 
 				local baseWalkSpeed = gameConfig.walkSpeed or 16
 				humanoid.WalkSpeed = baseWalkSpeed * (newWepStats.walkSpeedMultiplier or 1.0)
@@ -163,7 +159,7 @@ function CustomizeGunGUI.Init(config)
 				vars.wepStats = newWepStats
 
 				if aimingSystemMod then
-					aimingSystemMod.UpdateADSVisual(gunModel, newWepStats, vars.sightIndex, vars.aiming == true, attachmentManager)
+					aimingSystemMod.UpdateADSVisual(gunModel, newWepStats, vars.sightIndex, vars.aiming == true)
 				end
 
 				print("[Customization] All stats reloaded successfully")
@@ -185,8 +181,8 @@ function CustomizeGunGUI.Init(config)
 				print("[Gun Client] Reloading weapon stats after customization")
 
 				local baseStats = require(equipped.SPH_Weapon.WeaponStats)
-				attachmentManager.StoreOriginalStats(equipped, baseStats)
-				local newWepStats = attachmentManager.ApplyAttachmentStats(equipped, vars.gunModel)
+				Attachments:SetBaseStats(equipped, baseStats)
+				local newWepStats = Attachments:ComputeStats(equipped, vars.gunModel)
 
 				mobileSupport.UpdateMobileButtonVisibility()
 

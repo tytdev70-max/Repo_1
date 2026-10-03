@@ -65,16 +65,37 @@ function PlayerLifecycle.init()
 			end
 		end
 
-		newPlayer.Backpack.ChildAdded:Connect(function(child)
-			if child:GetAttribute("SPH_Consumed") then child:Destroy() return end
-			if child:FindFirstChild("SPH_Weapon") then CheckTool(newPlayer, child) end
-		end)
+		-- Roblox creates a NEW Backpack instance on every respawn, so these hooks
+		-- must be attached to each Backpack, not just the first one. Otherwise any
+		-- tool given after the first death (GunGiver, pickups...) never gets its
+		-- Ammo/Chambered/BoltReady/FireMode values created.
+		local hookedBackpacks = setmetatable({}, { __mode = "k" })
+		local function hookBackpack(backpack: Instance)
+			if not backpack:IsA("Backpack") or hookedBackpacks[backpack] then return end
+			hookedBackpacks[backpack] = true
 
-		newPlayer.Backpack.ChildRemoved:Connect(function(child)
-			if child:FindFirstChild("SPH_Weapon") then
-				HolsterSystem.RemoveHolster(newPlayer, child.Name)
+			backpack.ChildAdded:Connect(function(child)
+				if child:GetAttribute("SPH_Consumed") then child:Destroy() return end
+				if child:FindFirstChild("SPH_Weapon") then CheckTool(newPlayer, child) end
+			end)
+
+			backpack.ChildRemoved:Connect(function(child)
+				if child:FindFirstChild("SPH_Weapon") then
+					HolsterSystem.RemoveHolster(newPlayer, child.Name)
+				end
+			end)
+
+			-- Tools that landed before the hook existed
+			for _, child in ipairs(backpack:GetChildren()) do
+				if child:FindFirstChild("SPH_Weapon") then
+					task.spawn(CheckTool, newPlayer, child)
+				end
 			end
-		end)
+		end
+
+		local existingBackpack = newPlayer:FindFirstChildOfClass("Backpack")
+		if existingBackpack then hookBackpack(existingBackpack) end
+		newPlayer.ChildAdded:Connect(hookBackpack)
 
 		newPlayer.CharacterAdded:Connect(function(newChar: Model)
 			if not newPlayer.PlayerGui:FindFirstChild("SPH_UI") then

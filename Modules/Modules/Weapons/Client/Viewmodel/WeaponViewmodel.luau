@@ -2,7 +2,7 @@ local Modules = script:FindFirstAncestor("Modules")
 
 local WeaponContext         = require(Modules.Weapons.Core.WeaponContext)
 local vars                  = require(Modules.Weapons.Core.WeaponState).get()
-local attachmentManager     = require(Modules.Weapons.Attachments.AttachmentManager)
+local Attachments           = require(Modules.Weapons.Attachments.SPHAttachments)
 local reticleMotionBlurMod  = require(Modules.Weapons.Aiming.ReticleMotionBlurMod)
 local ModelQueryCache       = require(Modules.Weapons.Core.ModelQueryCache)
 local ContentProvider       = game:GetService("ContentProvider")
@@ -159,7 +159,7 @@ local function SetAllSightSurfaceGuis(enabled: boolean)
 		applyToModel(vars.gunModel, false)
 	end
 
-	for _, data in attachmentManager.GetActiveAttachments(vars.gunModel) or {} do
+	for _, data in Attachments:GetActive(vars.gunModel) do
 		if data and data.model then
 			applyToModel(data.model, false)
 		end
@@ -207,7 +207,7 @@ local function CollectAndManageSights(gunModel: Instance)
 
 	collectReticles(gunModel, true)
 
-	for _, data in attachmentManager.GetActiveAttachments(gunModel) or {} do
+	for _, data in Attachments:GetActive(gunModel) do
 		if data.model then
 			collectReticles(data.model, true)
 		end
@@ -226,25 +226,10 @@ end
 local function ApplySavedAttachmentsToViewmodel(gunModel: Instance, tool: Instance)
 	if not tool or not gunModel then return end
 
-	local savedAttachments = tool:FindFirstChild("SavedAttachments")
-	if not savedAttachments then return end
+	if not Attachments:HasLoadout(tool) then return end
 
-	attachmentManager.ClearAllAttachments(gunModel)
-
-	for _, attachmentData in savedAttachments:GetChildren() do
-		if attachmentData:IsA("StringValue") and attachmentData.Value ~= "" then
-			local success = attachmentManager.EquipAttachment(
-				player,
-				tool,
-				gunModel,
-				attachmentData.Value,
-				attachmentData.Name
-			)
-			if not success then
-				warn("[Viewmodel] Failed to apply attachment:", attachmentData.Value, "category:", attachmentData.Name)
-			end
-		end
-	end
+	-- Failures are reported by the attachment system.
+	Attachments:ApplyLoadout(gunModel, tool, player)
 end
 
 -- ─── VM Accessory cleanup ─────────────────────────────────────────────────────

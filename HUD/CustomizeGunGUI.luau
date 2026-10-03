@@ -64,7 +64,7 @@ local BUTTON_TWEEN_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.Easing
 local HOVER_TWEEN_INFO  = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local modules           = assets.Modules
-local attachmentManager = require(modules.Weapons.Attachments.AttachmentManager)
+local Attachments = require(modules.Weapons.Attachments.SPHAttachments)
 local attachmentsFolder = assets:WaitForChild("GunAttachments")
 
 local previousMouseBehavior    = UserInputService.MouseBehavior
@@ -269,21 +269,15 @@ local function Apply3DViewAttachments()
 	if not attachmentsFolder then return end
 	for category, attachmentName in pairs(selectedAttachments) do
 		if not attachmentName or attachmentName == "" then continue end
-		local config = attachmentManager.LoadAttachmentConfig(attachmentName, category)
+		local config = Attachments:LoadConfig(category, attachmentName)
 		if not config then continue end
-		local categoryPartName = category .. "Part"
-		if     category == "Underbarrel" then categoryPartName = "GripPart"
-		elseif category == "Optics"      then categoryPartName = "OpticPart"
-		elseif category == "Muzzle"      then categoryPartName = "MuzzlePart"
-		elseif category == "Stock"       then categoryPartName = "StockPart"
-		end
+		local categoryPartName = Attachments:GetSlotPartName(category)
+		if not categoryPartName then continue end
 		local categoryPart = vp3DGunModel:FindFirstChild(categoryPartName, true)
 		if not categoryPart then continue end
 		local mountPoint = categoryPart:FindFirstChild(attachmentName)
 		if not mountPoint or not mountPoint:IsA("Attachment") then continue end
-		local categoryFolder = attachmentsFolder:FindFirstChild(category)
-		if not categoryFolder then continue end
-		local attachmentFolder = categoryFolder:FindFirstChild(attachmentName)
+		local attachmentFolder = Attachments:GetContentFolder(category, attachmentName)
 		if not attachmentFolder then continue end
 		local rootName = config.RootPart
 		if not rootName then
@@ -946,19 +940,12 @@ setupEvent.Event:Connect(function(tool)
 	selectedAttachments = {}
 	gunNameLabel.Text = tool.Name
 	setupAllColumns()
-	local savedFolder = tool:FindFirstChild("SavedAttachments")
-	if savedFolder then
-		for _, attachmentData in ipairs(savedFolder:GetChildren()) do
-			if attachmentData:IsA("StringValue") then
-				local category = attachmentData.Name
-				local attachmentName = attachmentData.Value
-				applyAttachment(attachmentName, category)
-				for button, data in pairs(activeButtons) do
-					if data.attachmentName == attachmentName and data.category == category then
-						selectedButtonsByCategory[category] = button
-						selectVisual(button, false)
-					end
-				end
+	for category, attachmentName in pairs(Attachments:GetLoadout(tool)) do
+		applyAttachment(attachmentName, category)
+		for button, data in pairs(activeButtons) do
+			if data.attachmentName == attachmentName and data.category == category then
+				selectedButtonsByCategory[category] = button
+				selectVisual(button, false)
 			end
 		end
 	end
@@ -999,22 +986,8 @@ confirmButton.MouseButton1Click:Connect(function()
 	end
 	local previewFolder = currentWeapon:FindFirstChild("PreviewAttachments")
 	if previewFolder then previewFolder:Destroy() end
-	local savedFolder = currentWeapon:FindFirstChild("SavedAttachments")
-	if savedFolder then
-		savedFolder:ClearAllChildren()
-	else
-		savedFolder = Instance.new("Folder")
-		savedFolder.Name = "SavedAttachments"
-		savedFolder.Parent = currentWeapon
-	end
-	for category, attachmentName in pairs(attachments) do
-		local sv = Instance.new("StringValue")
-		sv.Name = category
-		sv.Value = attachmentName
-		sv.Parent = savedFolder
-	end
-	local HttpService = game:GetService("HttpService")
-	currentWeapon:SetAttribute("SavedAttachmentsJSON", HttpService:JSONEncode(attachments))
+	-- Optimistic local copy (the server rebuilds and replicates the authoritative one).
+	Attachments:SetLoadout(currentWeapon, Attachments:SanitizeLoadout(attachments, currentWeapon))
 	applyEvent:FireServer(currentWeapon, attachments)
 	local character = player.Character
 	local shouldRestoreInventory = true

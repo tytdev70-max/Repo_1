@@ -10,13 +10,13 @@ local mobilePickupGui   = nil
 local mobileMovementGui = nil
 
 local _vars
-local _attachmentManager, _playerGui, _HandleInput
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
+local _playerGui, _HandleInput
 local _character, _humanoid, _player, _Network, _assets
 local _proxPromptService, _defaultFOV
 
 function MobileSupportMod.Init(deps)
 	_vars = require(Modules.Weapons.Core.WeaponState).get()
-	_attachmentManager = deps.attachmentManager
 	_playerGui         = deps.playerGui
 	_HandleInput       = deps.HandleInput
 	_character         = deps.character
@@ -98,13 +98,13 @@ local function HasLaserAttachment()
 	local gm = _vars.gunModel
 	if not gm then return false end
 	return (gm.Grip:FindFirstChild("Laser") ~= nil)
-		or _attachmentManager.HasLaserAttachment(gm)
+		or Attachments:AnyActiveFlag(gm, "EnableLaser")
 end
 
 local function HasFlashlightAttachment()
 	local gm = _vars.gunModel
 	if not gm then return false end
-	return _attachmentManager.GetFlashlightSource(gm) ~= nil
+	return Attachments:GetFlashlightSource(gm) ~= nil
 end
 
 function MobileSupportMod.UpdateMobileButtonVisibility()

@@ -32,7 +32,7 @@ local defaultFOV
 local userInputService
 local ContentProvider
 local grenadeClient
-local attachmentManager
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local mobileSupport
 local warnPrefix
 local recoilSpring
@@ -85,7 +85,6 @@ function WeaponEquipMod.Init(deps)
 	userInputService = deps.userInputService
 	ContentProvider = deps.ContentProvider
 	grenadeClient = deps.grenadeClient
-	attachmentManager = deps.attachmentManager
 	mobileSupport = deps.mobileSupport
 	warnPrefix = deps.warnPrefix
 	recoilSpring = deps.recoilSpring
@@ -204,9 +203,9 @@ function WeaponEquipMod.EquipWeapon(newChild)
 		return
 	end
 
-	attachmentManager.StoreOriginalStats(equipped, wepStats)
+	Attachments:SetBaseStats(equipped, wepStats)
 
-	wepStats = attachmentManager.ApplyAttachmentStats(equipped, nil)
+	wepStats = Attachments:ComputeStats(equipped, nil)
 	vars.wepStats = wepStats
 
 	local baseWalkSpeed = config.walkSpeed or 16
@@ -328,19 +327,19 @@ function WeaponEquipMod.EquipWeapon(newChild)
 		end
 	end
 
-	attachmentManager.ClearAllAttachments(gun)
-	attachmentManager.PrepareForEquip(gun)
+	Attachments:ClearModel(gun)
+	Attachments:ResetModel(gun)
 	collectAndManageSights(gun)
 
 	weldMod.BlankM6D(rig.AnimBase, gun.Grip)
 
 	equipped = vars.equipped
-	if equipped:FindFirstChild("SavedAttachments") then
+	if Attachments:HasLoadout(equipped) then
 		applySavedAttachmentsToViewmodel(gun, equipped)
 
 		local baseStats = require(equipped.SPH_Weapon.WeaponStats)
-		attachmentManager.StoreOriginalStats(equipped, baseStats)
-		wepStats = attachmentManager.ApplyAttachmentStats(equipped, gun)
+		Attachments:SetBaseStats(equipped, baseStats)
+		wepStats = Attachments:ComputeStats(equipped, gun)
 		vars.wepStats = wepStats
 
 		local baseWalkSpeed2 = config.walkSpeed or 16
@@ -355,12 +354,10 @@ function WeaponEquipMod.EquipWeapon(newChild)
 	end
 	
 	if aimingSystemMod and vars.wepStats then
-		aimingSystemMod.UpdateADSVisual(gun, vars.wepStats, vars.sightIndex, vars.aiming == true, attachmentManager)
+		aimingSystemMod.UpdateADSVisual(gun, vars.wepStats, vars.sightIndex, vars.aiming == true)
 	end
 
-	attachmentManager.DebugMuzzleState(gun)
-
-	local active = attachmentManager.GetActiveAttachments(gun)
+	local active = Attachments:GetActive(gun)
 	local autoLaser = false
 	local autoFlashlight = false
 	local silencerVolumeMult = 1

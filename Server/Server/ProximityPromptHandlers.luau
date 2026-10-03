@@ -3,6 +3,7 @@
 
 local ServiceRefs = require(script.Parent.ServiceRefs)
 local AssetRefs   = require(script.Parent.AssetRefs)
+local GunSetupSystem = require(script.Parent.GunSetupSystem)
 
 local proxPromptService = ServiceRefs.proxPromptService
 local assets            = AssetRefs.assets
@@ -72,7 +73,14 @@ local function HandleGunGiverPrompt(prompt: Instance, player: Player)
 			warn(("[GunGiver] No tool found under prompt '%s'."):format(prompt:GetFullName()))
 			return
 		end
-		newGun        = newGun:Clone()
+		newGun = newGun:Clone()
+		-- Create Ammo/Chambered/BoltReady/FireMode BEFORE the tool reaches the
+		-- player, so equipping never races the Backpack hook.
+		local sphWeapon = newGun:FindFirstChild("SPH_Weapon")
+		local statsModule = sphWeapon and sphWeapon:FindFirstChild("WeaponStats")
+		if statsModule then
+			GunSetupSystem.SetupGun(newGun, require(statsModule))
+		end
 		newGun.Parent = player.Backpack
 		gunPool.Value -= 1
 

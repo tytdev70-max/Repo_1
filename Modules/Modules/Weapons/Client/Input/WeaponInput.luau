@@ -4,7 +4,7 @@ local Assets = Modules.Parent
 local WeaponContext = require(Modules.Weapons.Core.WeaponContext)
 local vars = require(Modules.Weapons.Core.WeaponState).get()
 local config = require(Assets.GameConfig)
-local attachmentManager = require(Modules.Weapons.Attachments.AttachmentManager)
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local aimingSystemMod = require(Modules.Weapons.Aiming.AimingSystemMod)
 local bulletHandler = require(Modules.Weapons.Fire.BulletHandler)
 local grenadeClient = require(Modules.Misc.Grenades.GrenadeClient)
@@ -304,7 +304,7 @@ HandleInput = function(actionName, inputState, inputObject)
 				perGunSightIndex[vars.equipped.Name] = vars.sightIndex
 			end
 			
-			aimingSystemMod.UpdateADSVisual(vars.gunModel, vars.wepStats, vars.sightIndex, vars.aiming, attachmentManager)
+			aimingSystemMod.UpdateADSVisual(vars.gunModel, vars.wepStats, vars.sightIndex, vars.aiming)
 			aimingSystemMod.ReplicateAimState(true)
 		elseif actionName == "SPH_Freelook" then 
 			if userInputService.TouchEnabled then
@@ -462,7 +462,7 @@ HandleInput = function(actionName, inputState, inputObject)
 				end
 			end
 		elseif actionName == "SPH_ToggleLaser" and inputState == inputBegan 
-			and (vars.gunModel.Grip:FindFirstChild("Laser") or attachmentManager.HasLaserAttachment(vars.gunModel)) then
+			and (vars.gunModel.Grip:FindFirstChild("Laser") or Attachments:AnyActiveFlag(vars.gunModel, "EnableLaser")) then
 			laserSightMod.ToggleLocalLaser()
 		elseif actionName == "SPH_ToggleFlashlight" and inputState == inputBegan then
 			local fireAnimPlaying = vars.wepStats and vars.wepStats.fireAnim
@@ -472,7 +472,7 @@ HandleInput = function(actionName, inputState, inputObject)
 			if vars.togglingAttachment or IsAnimationBusy() or vars.sprinting
 				or vars.holdStance ~= 0 or fireAnimPlaying then return end
 
-			local flashlightPart = attachmentManager.GetFlashlightSource(vars.gunModel)
+			local flashlightPart = Attachments:GetFlashlightSource(vars.gunModel)
 			if not flashlightPart then return end
 
 			local function ApplyFlashlightState()
@@ -487,7 +487,7 @@ HandleInput = function(actionName, inputState, inputObject)
 				local flashColor = glareMod.ResolveFlashlightColor(flashlightPart, vars.wepStats)
 
 				local tpGunModel = GetThirdPersonGunModel()
-				local tpFlashlightPart = tpGunModel and attachmentManager.GetFlashlightSource(tpGunModel)
+				local tpFlashlightPart = tpGunModel and Attachments:GetFlashlightSource(tpGunModel)
 				if tpFlashlightPart then
 					vars.flashFX.mod.SetEnabled(tpFlashlightPart, vars.flashlightEnabled and not vars.firstPerson, vars.wepStats)
 				end
