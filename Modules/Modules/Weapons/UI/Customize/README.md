@@ -98,3 +98,45 @@ Flash(message, kind?)      PlaySound(kind)           GetViewport() -> ViewportFr
   - `GetSelectedAttachments` still answers, with a copy of the selection.
   - The `CustomizeGunHandler` prompt callbacks work as before.
   - The respawn/death force-close works as before.
+
+## Using and redesigning the Studio GUI (`ui = "template"`, the default)
+By default the menu uses the `CustomizeGunGUI` ScreenGui made in Studio (`SPH_Assets.HUD.GunGUIs.CustomizeGunGUI`). `View/Template.luau` finds the elements below by name, so you can change sizes, colours, fonts, images and layouts freely.
+
+**Names to keep:**
+```
+CustomizeGunGUI (ScreenGui)  + the CustomizeGunGUI LocalScript inside it
+├─ Hover / Select / Deselect                 Sounds (optional)
+├─ AttachmentsFrame.Padding.AttachmentsColumn   container of the columns
+│   └─ <column>                              one per slot
+│       ├─ columnheading.title               TextLabel (optional) - slot label
+│       └─ display.items                     ScrollingFrame/Frame - the items
+│           └─ <item>                        Frame (the clickable card)
+│               └─ padding                   Frame
+│                   ├─ itemname              TextLabel - attachment folder name
+│                   └─ icon                  ImageLabel (optional)
+└─ MainDisplayFrame
+    ├─ content.ConfirmButton                 GuiButton (required)
+    ├─ content.CloseButton                   GuiButton (optional)
+    ├─ content.BlankFrame.GunName            TextLabel (optional)
+    └─ 3DView.3DVPF                          ViewportFrame (optional) - 3D preview
+Optional, anywhere: RevertButton, ClearAllButton (GuiButtons), Summary, Status (TextLabels)
+```
+
+**How a column finds its slot:**
+- If the column has a `Slot` string attribute, it uses that (for example `Magazine`).
+- Otherwise, if the column is named after the slot, it uses its name.
+- Columns still named `column` take Optics, Underbarrel, Muzzle and Stock in `LayoutOrder` order.
+
+**How an item finds its attachment:**
+- If the item has an `Attachment` attribute, it uses that.
+- Otherwise it uses the `itemname` text, which must match the folder name in `GunAttachments/<Slot>/`.
+- Items the equipped gun can't take are hidden.
+
+**Missing columns and items:**
+- An attachment with no designed item gets a copy of the first item.
+- A slot with no column gets a copy of the first column.
+- To control how they look, design them yourself.
+
+**Selection look:**
+- Selected items turn `template.selectedColor` and grow by `template.selectedScale`.
+- Right-clicking an item clears its slot.

@@ -125,6 +125,25 @@ Config.defaults = {
 	-- resolveGunModel = function(tool) -> Model?
 	-- onConfirmed = function(tool, loadout)
 	view = nil,
+
+	-- Which built-in UI to use:
+	--   "template"  (default) the CustomizeGunGUI designed in Studio (View/Template).
+	--               Falls back to "generated" if the ScreenGui has no template frames.
+	--   "generated" the UI built in code (View/init); the template frames are hidden.
+	ui = "template",
+
+	-- Options for ui = "template" (see View/Template for the expected hierarchy)
+	template = {
+		autoColumns = true, -- slot with options but no column: copy the first column
+		autoItems = true, -- attachment with no designed item: copy the first item
+		hideEmptyColumns = false, -- hide columns of slots this weapon can't use
+		createStatus = true, -- create a Status label for messages if the GUI has none
+		selectedColor = { 100, 200, 100 },
+		selectedScale = 1.03,
+		hoverScale = 1.01,
+		unavailableTransparency = 0.6, -- items shown with behaviour.showUnavailable
+		legacyOrder = { "Optics", "Underbarrel", "Muzzle", "Stock" }, -- columns named "column"
+	},
 	slotFilter = nil,
 }
 
@@ -143,8 +162,20 @@ local function deepCopy(value: any): any
 	return result
 end
 
+-- Arrays (e.g. blockedKeys) are replaced as a whole; dictionaries are merged. An empty
+-- table counts as an array only where the default is an array ({} = "none").
+local function replaces(base: any, override: any): boolean
+	if type(base) ~= "table" or type(override) ~= "table" then
+		return true
+	end
+	if next(base) ~= nil and isArray(base) then
+		return true
+	end
+	return next(override) ~= nil and isArray(override)
+end
+
 local function merge(base: any, override: any): any
-	if type(base) ~= "table" or type(override) ~= "table" or isArray(override) then
+	if replaces(base, override) then
 		if override == nil then
 			return deepCopy(base)
 		end

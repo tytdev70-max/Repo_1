@@ -24,6 +24,7 @@ local Controller = require(script.Controller)
 local Environment = require(script.Environment)
 local Preview = require(script.Preview)
 local View = require(script.View)
+local TemplateView = require(script.View.Template)
 local Bridge = require(script.Bridge)
 
 local CustomizeUI = {}
@@ -31,6 +32,7 @@ local CustomizeUI = {}
 CustomizeUI.Config = Config
 CustomizeUI.Controller = Controller
 CustomizeUI.View = View
+CustomizeUI.TemplateView = TemplateView
 CustomizeUI.Bridge = Bridge
 
 local GUI_NAME = "CustomizeGunGUI" -- other scripts read PlayerGui.CustomizeGunGUI.Enabled
@@ -42,7 +44,7 @@ local uninstall: (() -> ())? = nil
 -- Exactly one ScreenGui named CustomizeGunGUI must exist (WeaponInput/WeaponFireMod
 -- look it up by name). Reuse it if present (legacy template, or the ScreenGui this
 -- script lives in); otherwise create it.
-local function prepareGui(explicit: ScreenGui?, legacyMode: string): ScreenGui
+local function prepareGui(explicit: ScreenGui?, legacyMode: string, generated: boolean?): ScreenGui
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local gui = explicit or playerGui:FindFirstChild(GUI_NAME)
 	if not gui then
@@ -52,6 +54,9 @@ local function prepareGui(explicit: ScreenGui?, legacyMode: string): ScreenGui
 		gui.Parent = playerGui
 	end
 	gui = gui :: ScreenGui
+	if not generated then
+		return gui -- template mode: the Studio design is used exactly as built
+	end
 	gui.IgnoreGuiInset = true
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	for _, name in ipairs(LEGACY_FRAMES) do
@@ -91,9 +96,21 @@ function CustomizeUI.start(options: { [string]: any }?)
 	local attachments = opts.attachments
 		or require(script:FindFirstAncestor("Modules").Weapons.Attachments.SPHAttachments)
 	local hooks = opts.hooks or {}
-	local gui = prepareGui(opts.gui, opts.legacyFrames or "hide")
-
-	local viewFactory = config.view or View.new
+	local gui = prepareGui(opts.gui, opts.legacyFrames or "hide", false)
+	local viewFactory = config.view
+	if not viewFactory then
+		if config.ui == "template" and TemplateView.isTemplate(gui) then
+			viewFactory = TemplateView.new
+		else
+			if config.ui == "template" then
+				warn("[CustomizeUI] " .. gui:GetFullName() .. " has no template frames "
+					.. "(AttachmentsFrame.Padding.AttachmentsColumn, MainDisplayFrame.content.ConfirmButton); "
+					.. "using the generated UI")
+			end
+			prepareGui(gui, opts.legacyFrames or "hide", true)
+			viewFactory = View.new
+		end
+	end
 	local view = viewFactory({
 		gui = gui,
 		config = config,

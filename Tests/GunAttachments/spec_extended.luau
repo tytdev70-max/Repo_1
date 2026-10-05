@@ -419,6 +419,17 @@ test("Config.resolve: deep merge, arrays replaced, defaults untouched", function
 	eq(Config.defaults.theme.accent[1], 92, "resolved tables are copies")
 end)
 
+test("Config: empty overrides keep every default; {} clears an array", function()
+	for _, overrides in ipairs({ {}, { slots = {} }, { template = {} } }) do
+		local config = Config.resolve(overrides)
+		eq(config.ui, "template", "ui default")
+		eq(config.template.selectedScale, Config.defaults.template.selectedScale, "template defaults")
+		eq(config.behaviour.closeOnConfirm, true, "behaviour defaults")
+	end
+	eq(Config.resolve(nil).text.title, Config.defaults.text.title, "nil options")
+	eq(#Config.resolve({ behaviour = { closeKeys = {} } }).behaviour.closeKeys, 0, "{} disables close keys")
+end)
+
 print(("\nextended: %d passed, %d failed"):format(passed, failed))
 if failed > 0 then
 	error("extended tests failed")

@@ -63,6 +63,16 @@ local SUPER = {
 	PointLight = "Light",
 	SurfaceLight = "Light",
 	Tool = "BackpackItem",
+	-- GUI (Customize template view)
+	Frame = "GuiObject",
+	ScrollingFrame = "GuiObject",
+	TextLabel = "GuiObject",
+	ImageLabel = "GuiObject",
+	ViewportFrame = "GuiObject",
+	TextButton = "GuiButton",
+	ImageButton = "GuiButton",
+	GuiButton = "GuiObject",
+	ScreenGui = "LayerCollector",
 }
 
 local DEFAULTS = {
@@ -104,6 +114,17 @@ local function newInstance(className)
 				raw._props[key] = value
 			end
 		end
+	end
+	if isA(className, "GuiObject") then
+		raw._props.Visible = true
+		raw._props.Active = false
+		raw._props.LayoutOrder = 0
+		raw._props.BackgroundTransparency = 0
+	end
+	if isA(className, "GuiButton") then
+		raw._props.MouseEnter = newSignal()
+		raw._props.MouseButton1Click = newSignal()
+		raw._props.MouseButton2Click = newSignal()
 	end
 	if className == "Attachment" then
 		raw._props.CFrame = cf()

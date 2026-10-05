@@ -27,7 +27,16 @@ end
 print("[CustomizeUI] starting; gui =", gui and gui:GetFullName())
 CustomizeUI.start({
 	gui = gui,
-	legacyFrames = "hide", -- legacy template frames are hidden, not deleted
+
+	-- "template": use the CustomizeGunGUI designed in Studio (default).
+	-- "generated": use the UI built in code instead.
+	ui = "template",
+	template = {
+		autoColumns = true, -- new slots (Magazine, Barrel, ...) get a copy of the first column
+		autoItems = true, -- attachments with no designed item get a copy of the first item
+		hideEmptyColumns = false, -- true: hide columns of slots the equipped gun can't use
+	},
+	legacyFrames = "hide", -- only used by "generated": hide the Studio frames
 
 	behaviour = {
 		showUnavailable = false, -- true: show options this gun can't take, greyed out
