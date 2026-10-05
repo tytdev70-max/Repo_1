@@ -273,16 +273,15 @@ function Preview:Show(tool: Tool): boolean
 	return true
 end
 
+-- The root part MUST be chosen exactly like the real mounting does, or the preview
+-- anchors a different part to the mount point and the attachment appears offset.
+-- So the package's own rule is used: config.RootPart, else the first MeshPart,
+-- else the first BasePart.
+local Mounting = require(script:FindFirstAncestor("Modules").ThirdParty.GunAttachments.Mounting)
+
 local function resolveRoot(folder: Instance, config: any): Instance?
-	if type(config.RootPart) == "string" then
-		return folder:FindFirstChild(config.RootPart)
-	end
-	for _, child in ipairs(folder:GetChildren()) do
-		if child:IsA("BasePart") then
-			return child
-		end
-	end
-	return nil
+	local rootName = Mounting.resolveRootName(folder, config)
+	return rootName and folder:FindFirstChild(rootName) or nil
 end
 
 -- Mounts `loadout` on the preview gun (replacing the previous preview attachments).
