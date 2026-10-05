@@ -38,9 +38,29 @@ function CustomizeGunGUI.Init(config)
 			customizeGUI.Enabled = false
 			customizeGUI.Parent = player.PlayerGui
 		else
-			warn("[Customization] SPH_Assets.HUD.GunGUIs.CustomizeGunGUI not found - menu won't start")
+			warn("[Customization] SPH_Assets.HUD.GunGUIs.CustomizeGunGUI not found - using the generated menu")
 		end
 	end
+
+	-- Safety net: the menu is normally started by the CustomizeGunGUI LocalScript inside
+	-- the template. If that script didn't run (missing, disabled, errored), start the
+	-- menu here with default options so the customize table still works.
+	task.delay(3, function()
+		local ok, CustomizeUI = pcall(require, Modules.Weapons.UI.Customize)
+		if not ok then
+			warn("[Customization] Customize module failed to load: " .. tostring(CustomizeUI))
+			return
+		end
+		if CustomizeUI.get() then
+			return
+		end
+		warn("[Customization] the CustomizeGunGUI LocalScript did not start the menu within 3s; "
+			.. "starting it with default options. Run CustomizeUI.diagnose() to find out why.")
+		local started, err = pcall(CustomizeUI.start, {})
+		if not started then
+			warn("[Customization] fallback start failed: " .. tostring(err))
+		end
+	end)
 
 	-- Viewmodel refresh after the Customize menu confirms. The menu (Weapons/UI/Customize)
 	-- sends the loadout to the server itself and then fires GunEvents.CustomizeConfirmed

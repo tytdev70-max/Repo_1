@@ -24,7 +24,22 @@ local Controller = require(script.Controller)
 local Environment = require(script.Environment)
 local Preview = require(script.Preview)
 local View = require(script.View)
-local TemplateView = require(script.View.Template)
+-- View/Template is optional: if it is missing (e.g. not copied into Studio) the menu
+-- still works with the generated UI instead of failing to load at all.
+local TemplateView = nil
+do
+	local module = script.View:FindFirstChild("Template")
+	if module then
+		local ok, result = pcall(require, module)
+		if ok then
+			TemplateView = result
+		else
+			warn("[CustomizeUI] View.Template failed to load: " .. tostring(result))
+		end
+	else
+		warn("[CustomizeUI] ModuleScript Customize.View.Template not found - the Studio GUI can't be used")
+	end
+end
 local Bridge = require(script.Bridge)
 
 local CustomizeUI = {}
@@ -99,10 +114,10 @@ function CustomizeUI.start(options: { [string]: any }?)
 	local gui = prepareGui(opts.gui, opts.legacyFrames or "hide", false)
 	local viewFactory = config.view
 	if not viewFactory then
-		if config.ui == "template" and TemplateView.isTemplate(gui) then
+		if config.ui == "template" and TemplateView and TemplateView.isTemplate(gui) then
 			viewFactory = TemplateView.new
 		else
-			if config.ui == "template" then
+			if config.ui == "template" and TemplateView then
 				warn("[CustomizeUI] " .. gui:GetFullName() .. " has no template frames "
 					.. "(AttachmentsFrame.Padding.AttachmentsColumn, MainDisplayFrame.content.ConfirmButton); "
 					.. "using the generated UI")
@@ -158,11 +173,15 @@ function CustomizeUI.start(options: { [string]: any }?)
 		uninstall = Bridge.install(controller)
 	end
 	current = controller
+	gui:SetAttribute("CustomizeUIRunning", true)
 	return controller
 end
 
 -- Tears down the running controller (if any).
 function CustomizeUI.stop()
+	if current and current._gui and current._gui.Parent then
+		current._gui:SetAttribute("CustomizeUIRunning", nil)
+	end
 	if uninstall then
 		uninstall()
 		uninstall = nil
@@ -175,6 +194,53 @@ end
 
 function CustomizeUI.get()
 	return current
+end
+
+-- Prints a checklist of everything the menu needs. Call it from the client
+-- (Studio Play mode: command bar set to "Client", or any LocalScript):
+--   require(game.ReplicatedStorage.SPH_Assets.Modules.Weapons.UI.Customize).diagnose()
+function CustomizeUI.diagnose()
+	local lines = {}
+	local function check(ok, text)
+		table.insert(lines, (if ok then "  [ OK ] " else "  [FAIL] ") .. text)
+		return ok
+	end
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	local gui = playerGui and playerGui:FindFirstChild(GUI_NAME)
+	check(current ~= nil, "menu started (CustomizeUI.start was called)")
+	check(gui ~= nil, "PlayerGui." .. GUI_NAME .. " exists")
+	if gui then
+		local copies = 0
+		for _, child in ipairs(playerGui:GetChildren()) do
+			if child.Name == GUI_NAME then
+				copies += 1
+			end
+		end
+		check(copies == 1, ("exactly one %s in PlayerGui (found %d)"):format(GUI_NAME, copies))
+		check(TemplateView ~= nil, "Customize.View.Template module loaded")
+		if TemplateView then
+			check(TemplateView.isTemplate(gui),
+				"template frames present (AttachmentsFrame.Padding.AttachmentsColumn, MainDisplayFrame.content.ConfirmButton)")
+		end
+		check(current == nil or current._gui == gui, "menu uses this ScreenGui")
+		local entry = gui:FindFirstChild(GUI_NAME, true)
+		check(entry ~= nil and entry:IsA("LocalScript"), "CustomizeGunGUI LocalScript inside the ScreenGui")
+	end
+	local handlerOk, handler = pcall(Bridge.handler)
+	if check(handlerOk, "CustomizeGunHandler loaded" .. (if handlerOk then "" else ": " .. tostring(handler))) then
+		local count = handler.GetPromptCount and handler.GetPromptCount() or -1
+		check(count ~= 0, ("customize prompts found (ProximityPrompt inside a part named ProxPart): %d"):format(count))
+		check(handler.IsBound == nil or handler.IsBound(), "prompt connected to the menu (BindCallbacks)")
+	end
+	local character = player and player.Character
+	local tool = character and character:FindFirstChildWhichIsA("Tool")
+	check(tool ~= nil, "a Tool is equipped" .. (if tool then " (" .. tool.Name .. ")" else ""))
+	if tool then
+		check(tool:FindFirstChild("SPH_Weapon") ~= nil, "equipped Tool has an SPH_Weapon child")
+	end
+	print("[CustomizeUI] diagnose:\n" .. table.concat(lines, "\n"))
+	return lines
 end
 
 return CustomizeUI

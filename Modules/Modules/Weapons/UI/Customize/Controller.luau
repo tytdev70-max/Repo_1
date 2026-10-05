@@ -220,7 +220,7 @@ function Controller:Open(): boolean
 	local tool = deps.getEquippedWeapon()
 	self:_debug("Open requested; state =", self._state, "equipped SPH tool =", tool)
 	if not tool then
-		self:_debug("Open aborted: no equipped Tool with an SPH_Weapon child")
+		warn("[CustomizeUI] can't open: no equipped Tool with an SPH_Weapon child")
 		return false
 	end
 	if self._state ~= "closed" then
