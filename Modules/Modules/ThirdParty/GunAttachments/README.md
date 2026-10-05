@@ -69,6 +69,24 @@ return {
 | `hooks.onSnapshotRestored(tool, stats)` | — | Patch non-JSON fields after a snapshot decode |
 | `hooks.isCompatible(config, tool, slot, name)` | — | Return true/false to override, nil to defer |
 | `hooks.filterLoadout(tool, loadout)` | — | Server policy (unlocks, bans) applied in `SanitizeLoadout` |
+| `rules.maxAttachments` | `nil` | Global cap on attachments per weapon (enforced in `SanitizeLoadout`) |
+| `rules.capacityAttribute` | `"MaxAttachments"` | Number attribute on a Tool that overrides the cap for that weapon |
+
+### Slots and roles
+Each slot can have a `role`, and several slots may share one:
+- **`optic`:** sights span every optic slot in slot order: `AimPart`, `AimPart2`, … of the primary, then the secondary's. With a single optic, `GetAimPart` behaves exactly as before.
+- **`muzzle`:** the muzzle point comes from the highest-order muzzle slot that has a `Muzzle`.
+- **`overridesMuzzle`:** the original muzzle is restored only when no overriding slot is still mounted.
+- **`grip`:** single-record queries use the first slot with the role.
+
+### Rules (capacity and conflicts)
+An attachment config may declare `ConflictsWith = { "Slot", "Slot/Name" }`. Declaring it on either side is enough.
+
+`SanitizeLoadout` visits entries in slot order. It drops an entry if it conflicts with one already accepted, or if the capacity is full.
+
+`CheckSelection` previews a single pick using the "newest pick wins" policy, for UIs.
+
+Both rules are off unless they are configured or declared.
 | `services` | Roblox services | `heartbeat`, `tween(part, t, delay, goals)`, `http`, `newInstance`, `identityCFrame`, `require` (for tests) |
 | `log` | `warn` | `false` to silence, or `{ warn = fn, debug = fn }` |
 
@@ -77,6 +95,8 @@ return {
 ### Content
 - `LoadConfig(slot, name) → config?`, `GetContentFolder(slot, name)`
 - `GetSlotPartName(slot)`, `IsValidSlot(slot)`, `GetSlots()`, `GetSlotForRole(role)`
+- `ListContent(slot)`: sorted names of the content folders that have a config module
+- `CanEquip(model, tool, slot, name)`: `(ok, reason)`. Runs the same checks as `Equip`, in the same order, without mounting anything.
 
 ### Lifecycle
 - `Equip(model, tool, slot, name, owner?) → (ok, reason?)`
@@ -88,7 +108,7 @@ return {
 ### Queries
 - `GetActive(model) → { [slot]: Record }` (frozen copy). Each Record has `slot, attachmentName, config, node, model (= node), tool`
 - `GetRecord`, `Has`, `IsTracked`, `GetOwner`, `GetSlotConfig`, `GetConfigField(model, slot, field)`, `AnyActiveFlag(model, field)`
-- `GetAimPart(model, sightIndex)`, `GetGripData(model)`, `HasHandGrip(model)`
+- `GetAimPart(model, sightIndex)`, `GetSights(model)`, `GetSightCount(model)`, `GetGripData(model)`, `HasHandGrip(model)`
 - `GetActiveMuzzle(model)`, `GetLaserSource(model)`, `GetFlashlightSource(model)`
 - `ApplyADSVisibility(model, aiming, aimTime?)`, `CleanupMuzzleState(model)`, `PreHideOriginalMuzzle(model)`
 
@@ -99,7 +119,9 @@ return {
 
 ### Loadout
 - `GetLoadout(tool)`, `HasLoadout(tool)`, `SetLoadout(tool, loadout)`
-- `SanitizeLoadout(raw, tool?)`: always run this on RemoteEvent input
+- `SanitizeLoadout(raw, tool?)`: always run this on RemoteEvent input. Applies the whitelist, `filterLoadout`, then the rules.
+- `CheckSelection(tool, loadout, slot, name)`: returns `{ ok, reason?, displaced = {slots} }`
+- `GetCapacity(tool?)`: the tool attribute, else `rules.maxAttachments`, else `nil`
 - `LoadoutHasFlag(tool, field, slot?)`: config flag check without a mounted model
 
 ### Signals and teardown

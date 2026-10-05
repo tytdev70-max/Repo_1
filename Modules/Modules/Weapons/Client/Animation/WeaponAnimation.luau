@@ -108,7 +108,7 @@ end
 PlayRepSound = function(soundName)
 	if not vars.dead then
 		local isSuppressed = vars.equipped ~= nil
-			and Attachments:LoadoutHasFlag(vars.equipped, "EnableSilencer", "Muzzle")
+			and Attachments:LoadoutHasFlag(vars.equipped, "EnableSilencer")
 
 		if isSuppressed then
 			if soundName == "Fire" or soundName == "AutoFire" then

@@ -27,7 +27,7 @@ function PlayerFireSystem.PlayerFire(player: Player, firePoint: CFrame, pelletDi
 	local magAmmo  = gunAmmo.MagAmmo
 
 	-- Suppressor detection
-	local isSuppressed = Attachments:LoadoutHasFlag(tool, "EnableSilencer", "Muzzle")
+	local isSuppressed = Attachments:LoadoutHasFlag(tool, "EnableSilencer") -- any slot (Muzzle, Barrel, ...)
 
 	-- Ammo / bolt state
 	if wepStats.fireMode == 4 then

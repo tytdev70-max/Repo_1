@@ -22,6 +22,12 @@ Defaults.options = {
 		jsonAttribute = "SavedAttachmentsJSON",
 		maxNameLength = 64,
 	},
+	-- Loadout rules, enforced by SanitizeLoadout (server) and reported by CheckSelection.
+	-- Off by default: no capacity, and conflicts only exist if configs declare them.
+	rules = {
+		maxAttachments = nil, -- number? global cap
+		capacityAttribute = "MaxAttachments", -- per-tool override (number attribute)
+	},
 	stats = {
 		writeSnapshots = true,
 		originalAttribute = "OriginalStats",

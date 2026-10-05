@@ -8,7 +8,9 @@ export type SlotDef = {
 	mountPart: string,
 	order: number,
 	-- Optional role: "optic" (aim parts, reticle/DOF/LPVO), "grip" (hand IK),
-	-- "muzzle" (muzzle point). The first slot with a role answers role queries.
+	-- "muzzle" (muzzle point). Several slots may share a role: the first one answers
+	-- single-record queries; sights span every optic slot; the muzzle point comes from
+	-- the highest-order muzzle slot that provides one.
 	role: string?,
 	overridesMuzzle: boolean?,
 }
@@ -42,6 +44,10 @@ export type AttachmentConfig = {
 	ReticleConfig: any?,
 	DepthOfField: any?,
 	LPVOZoom: any?,
+	-- Loadout rules / UI metadata (all optional):
+	ConflictsWith: { string }?, -- "Slot" or "Slot/Name"
+	DisplayName: string?,
+	Icon: string?,
 	[string]: any,
 }
 

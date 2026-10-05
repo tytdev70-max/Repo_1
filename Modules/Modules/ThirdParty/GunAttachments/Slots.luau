@@ -71,6 +71,17 @@ function Slots.forRole(slots: SlotTable, role: string): SlotDef?
 	return slots.byRole[role]
 end
 
+-- Every slot with `role`, in slot order (e.g. primary + secondary optic).
+function Slots.allForRole(slots: SlotTable, role: string): { SlotDef }
+	local result = {}
+	for _, def in ipairs(slots.ordered) do
+		if def.role == role then
+			table.insert(result, def)
+		end
+	end
+	return result
+end
+
 -- Sorts a list of slot names by slot order (unknown slots last, alphabetical).
 function Slots.sortNames(slots: SlotTable, names: { string }): { string }
 	table.sort(names, function(a, b)

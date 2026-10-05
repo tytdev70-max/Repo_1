@@ -1,0 +1,168 @@
+--!nonstrict
+-- Customize/Config
+-- Every tunable of the Customize UI, with defaults. Pass overrides to
+-- CustomizeUI.start({ ... }); tables are deep-merged, so you only specify what you
+-- change. Arrays (e.g. blockedKeys) are replaced, not merged.
+
+local Config = {}
+
+Config.defaults = {
+	-- ── behaviour ────────────────────────────────────────────────────────────
+	behaviour = {
+		showUnavailable = false, -- show options the weapon can't take (greyed + reason)
+		showEmptySlots = false, -- show slots with no options for this weapon
+		closeOnConfirm = true,
+		confirmWhenUnchanged = true, -- original always re-sent on confirm (server dedupes)
+		reopenDelay = 0, -- legacy waited 0.2s when reopening an open menu
+		displayOrder = 1000,
+		closeKeys = { "Escape", "ButtonB" }, -- Enum.KeyCode names; {} to disable
+	},
+
+	-- ── per-slot presentation (keys = slot names; all fields optional) ──────
+	--   label = "Sights", order = 1, hidden = true, allowEmpty = false
+	slots = {
+		Optics = { label = "Optics" },
+		Underbarrel = { label = "Underbarrel" },
+		Muzzle = { label = "Muzzle" },
+		Stock = { label = "Stock" },
+		Barrel = { label = "Barrel" },
+		Magazine = { label = "Magazine" },
+		SecondaryOptic = { label = "Secondary Optic" },
+	},
+
+	-- ── layout (scale units unless noted) ───────────────────────────────────
+	layout = {
+		windowSize = { 0.86, 0.82 }, -- fraction of screen
+		windowMaxPixels = { 1500, 860 },
+		headerHeight = 0.09,
+		footerHeight = 0.1,
+		railWidth = 0.21, -- slot list
+		panelWidth = 0.31, -- option grid; preview gets the rest
+		gap = 10, -- pixels
+		optionCell = { 0.31, 0, 0, 92 }, -- UDim2 parts {xScale, xOffset, yScale, yOffset}
+		optionPadding = 8, -- pixels
+		slotTabHeight = 54, -- pixels
+	},
+
+	-- ── theme ────────────────────────────────────────────────────────────────
+	theme = {
+		font = "GothamMedium",
+		fontBold = "GothamBold",
+		backdrop = { 0, 0, 0 },
+		backdropTransparency = 0.45,
+		window = { 18, 20, 24 },
+		windowTransparency = 0.04,
+		panel = { 28, 31, 37 },
+		panelTransparency = 0,
+		stroke = { 60, 66, 76 },
+		text = { 235, 238, 242 },
+		subtext = { 150, 158, 170 },
+		accent = { 92, 196, 120 }, -- selected
+		accentText = { 15, 20, 16 },
+		hover = { 44, 49, 58 },
+		card = { 36, 40, 47 },
+		cardUnavailable = { 30, 31, 34 },
+		danger = { 214, 92, 92 },
+		warning = { 230, 180, 80 },
+		corner = 8, -- pixels
+		tweenTime = 0.12,
+	},
+
+	-- ── 3D preview ───────────────────────────────────────────────────────────
+	preview = {
+		enabled = true,
+		fov = 45,
+		yaw = -30,
+		pitch = 15,
+		dragSensitivity = 0.5,
+		zoomStep = 0.15, -- fraction of the model's largest dimension per wheel notch
+		minRadiusFactor = 0.4,
+		maxRadiusFactor = 2.5,
+		nearExpand = 0.28,
+		nearBuffer = 0.04,
+	},
+
+	-- ── session side effects (ported 1:1 from the legacy controller) ────────
+	environment = {
+		blockInputs = true,
+		freezeWalkSpeed = true,
+		suppressInventory = true,
+		inventoryNamePatterns = { "inventory", "hotbar" },
+		forceMouseFree = true,
+		blur = true, -- Lighting.GUIBlur, if present
+		blockActionName = "BlockAllInputs",
+		blockedKeys = {
+			"W", "A", "S", "D", "Space", "LeftShift", "RightShift", "LeftControl", "RightControl",
+			"One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Zero",
+			"ButtonL2", "ButtonR2", "ButtonX", "ButtonY", "DPadUp", "DPadDown", "DPadLeft",
+			"DPadRight", "Thumbstick1",
+		},
+		-- Character attributes that forbid restoring the inventory/backpack on close.
+		keepInventoryHiddenAttributes = { "BackpackDisabled", "IsUnequippingForArmHiding" },
+		inventoryRestoreDelay = 0.1,
+	},
+
+	-- ── text ─────────────────────────────────────────────────────────────────
+	text = {
+		title = "CUSTOMIZE",
+		slotsHeader = "SLOTS",
+		none = "None",
+		empty = "Empty",
+		clear = "Clear",
+		confirm = "CONFIRM",
+		revert = "Revert",
+		hint = "Drag to rotate  ·  Scroll to zoom",
+		unsaved = "Unsaved changes",
+		noSlots = "This weapon has no attachment slots.",
+		count = "%d attachments",
+		countWithCapacity = "%d / %d attachments",
+	},
+
+	-- ── extension points ─────────────────────────────────────────────────────
+	-- view = function(context) -> view   (replace the whole UI; see README)
+	-- slotFilter = function(tool, slotDef) -> boolean?
+	-- resolveGunModel = function(tool) -> Model?
+	-- onConfirmed = function(tool, loadout)
+	view = nil,
+	slotFilter = nil,
+}
+
+local function isArray(value: any): boolean
+	return type(value) == "table" and (value[1] ~= nil or next(value) == nil)
+end
+
+local function deepCopy(value: any): any
+	if type(value) ~= "table" then
+		return value
+	end
+	local result = {}
+	for key, item in pairs(value) do
+		result[key] = deepCopy(item)
+	end
+	return result
+end
+
+local function merge(base: any, override: any): any
+	if type(base) ~= "table" or type(override) ~= "table" or isArray(override) then
+		if override == nil then
+			return deepCopy(base)
+		end
+		return override
+	end
+	local result = {}
+	for key, value in pairs(base) do
+		result[key] = merge(value, override[key])
+	end
+	for key, value in pairs(override) do
+		if base[key] == nil then
+			result[key] = value
+		end
+	end
+	return result
+end
+
+function Config.resolve(overrides: { [string]: any }?): { [string]: any }
+	return merge(Config.defaults, overrides or {})
+end
+
+return Config

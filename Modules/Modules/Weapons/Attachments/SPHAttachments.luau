@@ -54,12 +54,43 @@ local function reinjectLighting(tool: Instance, stats: any)
 	end
 end
 
+-- SPH slot list — the SINGLE source of truth for attachment capacity. It is the server
+-- whitelist (SanitizeLoadout), the mount-part map, the stats order, and the list of
+-- slots the Customize UI can show. To add an attachment type: add a row here, put
+-- content in SPH_Assets/GunAttachments/<Slot>/<Name>, and add a <mountPart> with an
+-- Attachment named <Name> to every gun that should accept it. No UI code is needed.
+--
+-- The first four rows are the original slots, unchanged (names, mount parts, order,
+-- roles), so existing loadouts, content and stats behave exactly as before. A slot
+-- only appears in the UI for guns that have its mount part and fitting content.
+local SLOTS = {
+	{ name = "Optics", mountPart = "OpticPart", order = 1, role = "optic" },
+	{ name = "Underbarrel", mountPart = "GripPart", order = 2, role = "grip" },
+	{ name = "Muzzle", mountPart = "MuzzlePart", order = 3, role = "muzzle", overridesMuzzle = true },
+	{ name = "Stock", mountPart = "StockPart", order = 4 },
+	-- Extended muzzle category (barrel extensions, compensators). Mounted before the
+	-- muzzle device; the muzzle point comes from the highest-order muzzle slot.
+	{ name = "Barrel", mountPart = "BarrelPart", order = 2.5, role = "muzzle", overridesMuzzle = true },
+	-- Magazines (capacity etc. via ApplyStats).
+	{ name = "Magazine", mountPart = "MagazinePart", order = 5 },
+	-- Dual sights: a second optic (canted / piggyback). Its AimParts follow the
+	-- primary optic's in the sight-switch cycle.
+	{ name = "SecondaryOptic", mountPart = "SecondaryOpticPart", order = 6, role = "optic" },
+}
+
 local Attachments = GunAttachments.new({
 	contentRoot = getContentRoot,
-	-- Default slots = Optics/Underbarrel/Muzzle/Stock, identical to the server whitelist
-	-- (Constants.ATTACHMENT_CATEGORIES). Other categories were never persisted by the
-	-- server before, so unknown slots stay disabled.
+	slots = SLOTS,
+	-- Categories outside SLOTS are rejected (matches the original server whitelist).
 	allowUnknownSlots = false,
+	-- Capacity / conflict rules (enforced server-side by SanitizeLoadout). Off by
+	-- default; set a number here for a global cap, or a "MaxAttachments" number
+	-- attribute on a Tool for a per-weapon cap. Conflicts come from attachment configs
+	-- (ConflictsWith = { "Slot" | "Slot/Name" }).
+	rules = {
+		maxAttachments = nil,
+		capacityAttribute = "MaxAttachments",
+	},
 	hooks = {
 		resolveModel = resolveViewmodelGun,
 		onSnapshotRestored = reinjectLighting,

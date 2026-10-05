@@ -8,6 +8,7 @@ local Loadout = require(script.Parent.Loadout)
 local Mounting = require(script.Parent.Mounting)
 local Muzzle = require(script.Parent.Muzzle)
 local Registry = require(script.Parent.Registry)
+local Rules = require(script.Parent.Rules)
 local Scheduler = require(script.Parent.Scheduler)
 local Signal = require(script.Parent.Signal)
 local Slots = require(script.Parent.Slots)
@@ -132,6 +133,22 @@ function System:_roleRecord(model: Instance, role: string): Record?
 	return slot and entry.records[slot.name] or nil
 end
 
+-- Records of every slot with `role`, in slot order.
+function System:_roleRecords(model: Instance, role: string): { Record }
+	local entry = self._models[model]
+	local result = {}
+	if not entry then
+		return result
+	end
+	for _, def in ipairs(Slots.allForRole(self._slots, role)) do
+		local record = entry.records[def.name]
+		if record then
+			table.insert(result, record)
+		end
+	end
+	return result
+end
+
 function System:_primaryRoot(model: Instance): Instance?
 	local first = self._rootNames[1]
 	return first and (model :: any):FindFirstChild(first) or nil
@@ -194,6 +211,59 @@ end
 function System:GetSlotForRole(role: string): string?
 	local def = Slots.forRole(self._slots, role)
 	return def and def.name or nil
+end
+
+-- Names of the attachments available in content for `slot` (folders that contain a
+-- config module), sorted alphabetically. Empty when the slot has no content.
+function System:ListContent(slot: string): { string }
+	local names = {}
+	local root = self._registry:GetContentRoot()
+	local slotFolder = root and (root :: any):FindFirstChild(slot)
+	if not slotFolder then
+		return names
+	end
+	local moduleName = self._options.configModuleName
+	for _, child in ipairs(slotFolder:GetChildren()) do
+		if child:FindFirstChild(moduleName) then
+			table.insert(names, child.Name)
+		end
+	end
+	table.sort(names)
+	return names
+end
+
+-- Whether Equip(model, tool, slot, name) would succeed, without mounting anything.
+-- Performs the same checks in the same order as Equip. Returns (ok, reason).
+function System:CanEquip(model: Instance, tool: Instance, slot: string, name: string): (boolean, string?)
+	if not tool or not model then
+		return false, "missing model or tool"
+	end
+	if type(name) ~= "string" or name == "" then
+		return false, "invalid attachment name"
+	end
+	local slotDef = Slots.get(self._slots, slot)
+	if not slotDef then
+		return false, "unknown slot '" .. tostring(slot) .. "'"
+	end
+	local slotPart = (model :: any):FindFirstChild(slotDef.mountPart, true)
+	if not slotPart then
+		return false, "mount part '" .. slotDef.mountPart .. "' not found on model"
+	end
+	local mountPoint = slotPart:FindFirstChild(name)
+	if not mountPoint or not mountPoint:IsA("Attachment") then
+		return false, "mount Attachment '" .. name .. "' not found under " .. slotDef.mountPart
+	end
+	local config = self._registry:LoadConfig(slot, name)
+	if not config then
+		return false, "config not found for " .. slot .. "/" .. name
+	end
+	if not self._registry:IsCompatible(config, tool, slot, name) then
+		return false, "incompatible with " .. tostring((tool :: any).Name)
+	end
+	if not self._registry:GetContentFolder(slot, name) then
+		return false, "content folder not found for " .. slot .. "/" .. name
+	end
+	return true, nil
 end
 
 -- ─── lifecycle ───────────────────────────────────────────────────────────────
@@ -305,7 +375,27 @@ function System:Unequip(model: Instance, slot: string)
 
 	local slotDef = Slots.get(self._slots, slot)
 	if slotDef and slotDef.overridesMuzzle then
-		Muzzle.restore(model, self._rootNames)
+		-- Only bring the original muzzle back when no other overriding slot is still
+		-- mounted (e.g. Barrel + Muzzle); otherwise re-point ActiveCustomMuzzle.
+		local remaining = {}
+		for _, def in ipairs(self._slots.ordered) do
+			local other = def.overridesMuzzle and def.name ~= slot and entry.records[def.name]
+			if other then
+				table.insert(remaining, other)
+			end
+		end
+		if #remaining == 0 then
+			Muzzle.restore(model, self._rootNames)
+		else
+			local active = nil
+			for index = #remaining, 1, -1 do
+				if (remaining[index].node :: any):FindFirstChild("Muzzle", true) then
+					active = remaining[index].attachmentName
+					break
+				end
+			end
+			(model :: any):SetAttribute(ATTR.activeCustomMuzzle, active)
+		end
 	end
 
 	if Util.isAlive(node) then
@@ -425,12 +515,47 @@ function System:AnyActiveFlag(model: Instance, field: string): boolean
 	return false
 end
 
--- Aim part from the optic-role attachment: "AimPart<i>" for i > 1, else "AimPart".
+-- Every sight provided by mounted optic-role attachments, in slot order; per optic:
+-- AimPart, AimPart2, AimPart3, ... (stops at the first gap).
+function System:GetSights(model: Instance): { Instance }
+	local sights = {}
+	for _, record in ipairs(self:_roleRecords(model, "optic")) do
+		local node = record.node :: any
+		local first = node:FindFirstChild("AimPart", true)
+		if first then
+			table.insert(sights, first)
+		end
+		local index = 2
+		while true do
+			local part = node:FindFirstChild("AimPart" .. index, true)
+			if not part then
+				break
+			end
+			table.insert(sights, part)
+			index += 1
+		end
+	end
+	return sights
+end
+
+function System:GetSightCount(model: Instance): number
+	return #self:GetSights(model)
+end
+
+-- Aim part for sight `sightIndex` (1-based).
+-- One optic mounted (the classic case): "AimPart<i>" for i > 1, else "AimPart" —
+-- identical to the original behaviour. Several optics (dual sights): index into
+-- GetSights, falling back to the first sight.
 function System:GetAimPart(model: Instance, sightIndex: number?): Instance?
-	local record = self:_roleRecord(model, "optic")
-	if not record then
+	local records = self:_roleRecords(model, "optic")
+	if #records == 0 then
 		return nil
 	end
+	if #records > 1 then
+		local sights = self:GetSights(model)
+		return sights[sightIndex or 1] or sights[1]
+	end
+	local record = records[1]
 	local node = record.node :: any
 	local index = sightIndex or 1
 	if index > 1 then
@@ -479,9 +604,9 @@ function System:GetActiveMuzzle(model: Instance): Instance?
 	if not model then
 		return nil
 	end
-	local record = self:_roleRecord(model, "muzzle")
-	if record then
-		local muzzle = (record.node :: any):FindFirstChild("Muzzle", true)
+	local records = self:_roleRecords(model, "muzzle")
+	for index = #records, 1, -1 do
+		local muzzle = (records[index].node :: any):FindFirstChild("Muzzle", true)
 		if muzzle then
 			return muzzle
 		end
@@ -724,7 +849,33 @@ function System:HasLoadout(tool: Instance): boolean
 	return Loadout.has(tool, self._options.loadout.folderName)
 end
 
--- Validates an untrusted loadout and runs hooks.filterLoadout.
+-- Max attachments for `tool`: the tool's capacity attribute, else rules.maxAttachments,
+-- else nil (unlimited).
+function System:GetCapacity(tool: Instance?): number?
+	local rules = self._options.rules or {}
+	if tool and type(rules.capacityAttribute) == "string" then
+		local ok, value = pcall(function()
+			return (tool :: any):GetAttribute(rules.capacityAttribute)
+		end)
+		if ok and type(value) == "number" and value >= 0 then
+			return math.floor(value)
+		end
+	end
+	local max = rules.maxAttachments
+	if type(max) == "number" and max >= 0 then
+		return math.floor(max)
+	end
+	return nil
+end
+
+function System:_loadConfigFn()
+	return function(slot: string, name: string)
+		return self._registry:LoadConfig(slot, name)
+	end
+end
+
+-- Validates an untrusted loadout: slot whitelist + name checks, hooks.filterLoadout,
+-- then the rules (conflicts, capacity — entries visited in slot order).
 function System:SanitizeLoadout(raw: any, tool: Instance?): Loadout
 	local clean = Loadout.sanitize(raw, self._slots, self._options.loadout.maxNameLength)
 	local filter = self._options.hooks.filterLoadout
@@ -736,7 +887,22 @@ function System:SanitizeLoadout(raw: any, tool: Instance?): Loadout
 			self._log.warn("filterLoadout errored: " .. tostring(filtered))
 		end
 	end
-	return clean
+	local ordered = {}
+	for slot in pairs(clean) do
+		table.insert(ordered, slot)
+	end
+	Slots.sortNames(self._slots, ordered)
+	local accepted = Rules.apply(clean, ordered, self:_loadConfigFn(), self:GetCapacity(tool))
+	return accepted
+end
+
+-- Reports what picking `name` for `slot` on top of `loadout` would do under the rules
+-- ("newest pick wins"): { ok, reason?, displaced = { slot names to clear } }.
+function System:CheckSelection(tool: Instance?, loadout: Loadout, slot: string, name: string)
+	if not Slots.isValid(self._slots, slot) then
+		return { ok = false, reason = "unknown slot '" .. tostring(slot) .. "'", displaced = {} }
+	end
+	return Rules.check(loadout or {}, slot, name, self:_loadConfigFn(), self:GetCapacity(tool))
 end
 
 function System:SetLoadout(tool: Instance, loadout: Loadout)

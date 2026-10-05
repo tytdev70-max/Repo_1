@@ -31,8 +31,19 @@ for name in os.listdir(PKG):
         sys.exit(f"unrewritten require in {name}")
     open(os.path.join(out_pkg, name), "w").write(src)
 
-for name in ("mocks.luau", "spec.luau", "spec_shim.luau", "SPHAttachmentsMock.luau"):
+for name in ("mocks.luau", "spec.luau", "spec_shim.luau", "spec_extended.luau", "SPHAttachmentsMock.luau"):
     shutil.copy(os.path.join(HERE, name), os.path.join(build, name))
+
+# Pure modules of the Customize UI (no Roblox dependencies).
+CUSTOMIZE = os.path.join(REPO, "Modules", "Modules", "Weapons", "UI", "Customize")
+out_customize = os.path.join(build, "Customize")
+os.makedirs(out_customize)
+for name in ("Signal.luau", "Selection.luau", "Catalog.luau", "Config.luau"):
+    src = open(os.path.join(CUSTOMIZE, name)).read()
+    src = re.sub(r"require\(script\.Parent\.(\w+)\)", r'require("./\1")', src)
+    if "require(script" in src:
+        sys.exit(f"unrewritten require in Customize/{name}")
+    open(os.path.join(out_customize, name), "w").write(src)
 
 # The deprecated SPH shim, re-pointed at the mock-backed SPHAttachments stand-in.
 shim = open(os.path.join(REPO, "Modules", "Modules", "Weapons", "Attachments", "AttachmentManager.luau")).read()
@@ -53,7 +64,7 @@ if analyze:
     print("luau-analyze: no syntax errors")
 
 code = 0
-for spec in ("spec.luau", "spec_shim.luau"):
+for spec in ("spec.luau", "spec_shim.luau", "spec_extended.luau"):
     proc = subprocess.run([luau, spec], cwd=build, capture_output=True, text=True)
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr)

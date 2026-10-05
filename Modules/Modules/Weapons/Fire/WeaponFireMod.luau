@@ -380,8 +380,8 @@ local function UpdateFireLoop(dt: number)
 			end
 			local isAutoFire = (curFireMode == fireModes.Auto)
 
-			local isSuppressed = Attachments:Has(gunModel, "Muzzle") and
-				Attachments:GetActive(gunModel)["Muzzle"].config.EnableSilencer or false
+			-- Any mounted slot may suppress (Muzzle, Barrel, ...).
+			local isSuppressed = Attachments:AnyActiveFlag(gunModel, "EnableSilencer")
 
 			bulletHandler.FireFX(player, tempGunModel, "Muzzle", wepStats.muzzleChance, nil, isAutoFire, isSuppressed)
 

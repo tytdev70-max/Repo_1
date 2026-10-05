@@ -288,10 +288,17 @@ HandleInput = function(actionName, inputState, inputObject)
 				return
 			end
 			ChamberAnim()
-		elseif actionName == "SPH_SwitchSights" and inputState == inputBegan and vars.aiming and vars.gunModel:FindFirstChild("AimPart2") then 
+		elseif actionName == "SPH_SwitchSights" and inputState == inputBegan and vars.aiming
+			and (vars.gunModel:FindFirstChild("AimPart2") or Attachments:GetSightCount(vars.gunModel) > 1) then
+			-- Sight count: mounted optics when they provide several sights (dual sights /
+			-- multi-reticle optic), otherwise the gun's own AimPart, AimPart2, ...
+			local attachmentSights = Attachments:GetSightCount(vars.gunModel)
 			local tempIndex = vars.sightIndex
 			tempIndex += 1
-			if vars.gunModel:FindFirstChild("AimPart"..tempIndex) then
+			local hasNext = if attachmentSights > 1
+				then tempIndex <= attachmentSights
+				else vars.gunModel:FindFirstChild("AimPart"..tempIndex) ~= nil
+			if hasNext then
 				vars.sightIndex = tempIndex
 				PlayRepSound("AimUp")
 			else
