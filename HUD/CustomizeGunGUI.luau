@@ -24,12 +24,14 @@ if not gui and script.Parent and script.Parent:IsA("ScreenGui") then
 	gui.Name = "CustomizeGunGUI"
 end
 
+print("[CustomizeUI] starting; gui =", gui and gui:GetFullName())
 CustomizeUI.start({
 	gui = gui,
 	legacyFrames = "hide", -- legacy template frames are hidden, not deleted
 
 	behaviour = {
 		showUnavailable = false, -- true: show options this gun can't take, greyed out
+		debug = true, -- TEMP: prints each opening step to Output; set false when it works
 	},
 
 	-- Per-slot presentation. Keys are slot names from SPHAttachments.
@@ -41,3 +43,4 @@ CustomizeUI.start({
 	-- theme = { accent = { 92, 196, 120 } },
 	-- layout = { railWidth = 0.21, panelWidth = 0.31 },
 })
+print("[CustomizeUI] started")

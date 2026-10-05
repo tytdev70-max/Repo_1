@@ -209,10 +209,18 @@ function Controller:_buildSession(tool: Tool)
 end
 
 -- Opens the menu for the equipped weapon. Returns true once open.
+function Controller:_debug(...)
+	if self._config.behaviour.debug then
+		print("[CustomizeUI]", ...)
+	end
+end
+
 function Controller:Open(): boolean
 	local deps = self._deps
 	local tool = deps.getEquippedWeapon()
+	self:_debug("Open requested; state =", self._state, "equipped SPH tool =", tool)
 	if not tool then
+		self:_debug("Open aborted: no equipped Tool with an SPH_Weapon child")
 		return false
 	end
 	if self._state ~= "closed" then
@@ -234,6 +242,7 @@ function Controller:Open(): boolean
 	end
 	local current = deps.getEquippedWeapon()
 	if not current then
+		self:_debug("Open aborted: weapon unequipped during the settle frame")
 		self._state = "closed"
 		self:_setGuiEnabled(false)
 		return false
@@ -245,10 +254,11 @@ function Controller:Open(): boolean
 		self:_buildSession(current)
 	end)
 	if not ok then
-		warn("[CustomizeUI] open failed, resetting:", err)
+		warn("[CustomizeUI] open failed, resetting:", err, debug.traceback())
 		self:Close("error")
 		return false
 	end
+	self:_debug("Opened for", current, "- gui", self._gui:GetFullName(), "Enabled =", self._gui.Enabled)
 	self.Opened:Fire(current)
 	return true
 end

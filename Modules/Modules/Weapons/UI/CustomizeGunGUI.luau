@@ -26,6 +26,22 @@ function CustomizeGunGUI.Init(config)
 	local glareMod = config.glareMod
 	local getThirdPersonGunModel = config.getThirdPersonGunModel
 
+	-- Put the menu ScreenGui into PlayerGui. The CustomizeGunGUI LocalScript that starts
+	-- the menu lives INSIDE this template, so without this clone it never runs.
+	if not player.PlayerGui:FindFirstChild("CustomizeGunGUI") then
+		local hud = assets:FindFirstChild("HUD")
+		local gunGUIs = hud and hud:FindFirstChild("GunGUIs")
+		local template = gunGUIs and gunGUIs:FindFirstChild("CustomizeGunGUI")
+		if template then
+			local customizeGUI = template:Clone()
+			customizeGUI.ResetOnSpawn = false
+			customizeGUI.Enabled = false
+			customizeGUI.Parent = player.PlayerGui
+		else
+			warn("[Customization] SPH_Assets.HUD.GunGUIs.CustomizeGunGUI not found - menu won't start")
+		end
+	end
+
 	-- Viewmodel refresh after the Customize menu confirms. The menu (Weapons/UI/Customize)
 	-- sends the loadout to the server itself and then fires GunEvents.CustomizeConfirmed
 	-- with (tool, loadout). This replaces the old hook on the legacy template's

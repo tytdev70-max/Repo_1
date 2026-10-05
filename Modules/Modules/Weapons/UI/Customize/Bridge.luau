@@ -106,6 +106,9 @@ function Bridge.install(controller: any): () -> ()
 
 	-- H7: prompts open the menu; prompt state follows open/closed.
 	handler.BindCallbacks(function()
+		if controller._config.behaviour.debug then
+			print("[CustomizeUI] prompt triggered")
+		end
 		task.spawn(function()
 			controller:Open()
 		end)

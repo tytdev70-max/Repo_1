@@ -16,6 +16,7 @@ Config.defaults = {
 		reopenDelay = 0, -- legacy waited 0.2s when reopening an open menu
 		displayOrder = 1000,
 		closeKeys = { "Escape", "ButtonB" }, -- Enum.KeyCode names; {} to disable
+		debug = false, -- print each step of opening to the Output window
 	},
 
 	-- ── per-slot presentation (keys = slot names; all fields optional) ──────
