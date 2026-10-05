@@ -31,7 +31,7 @@ for name in os.listdir(PKG):
         sys.exit(f"unrewritten require in {name}")
     open(os.path.join(out_pkg, name), "w").write(src)
 
-for name in ("mocks.luau", "spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau", "gui_globals.luau", "SPHAttachmentsMock.luau"):
+for name in ("mocks.luau", "spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau", "spec_presets.luau", "spec_presets_ui.luau", "gui_globals.luau", "SPHAttachmentsMock.luau"):
     shutil.copy(os.path.join(HERE, name), os.path.join(build, name))
 
 # Pure modules of the Customize UI (no Roblox dependencies).
@@ -45,6 +45,11 @@ for name in ("Signal.luau", "Selection.luau", "Catalog.luau", "Config.luau"):
         sys.exit(f"unrewritten require in Customize/{name}")
     open(os.path.join(out_customize, name), "w").write(src)
 
+# Preset rules (pure).
+os.makedirs(os.path.join(build, "Presets"))
+PRESETS = os.path.join(REPO, "Modules", "Modules", "Weapons", "Presets")
+shutil.copy(os.path.join(PRESETS, "PresetBook.luau"), os.path.join(build, "Presets", "PresetBook.luau"))
+
 # The template view uses Roblox GUI globals; inject them from gui_globals.luau.
 os.makedirs(os.path.join(out_customize, "View"))
 src = open(os.path.join(CUSTOMIZE, "View", "Template.luau")).read()
@@ -52,6 +57,15 @@ names = ["game", "Instance", "TweenInfo", "Enum", "UDim2", "Vector2", "Color3", 
 header = 'local __G = require("../../gui_globals")\n' + "".join(f"local {n} = __G.{n}\n" for n in names)
 src = src.replace("--!nonstrict\n", "--!nonstrict\n" + header, 1)
 open(os.path.join(out_customize, "View", "Template.luau"), "w").write(src)
+
+# The controller (requires rewritten, Roblox globals injected the same way).
+src = open(os.path.join(CUSTOMIZE, "Controller.luau")).read()
+src = re.sub(r"require\(script\.Parent\.(\w+)\)", r'require("./\1")', src)
+header = 'local __G = require("../gui_globals")\n' + "".join(f"local {n} = __G.{n}\n" for n in names)
+src = src.replace("--!nonstrict\n", "--!nonstrict\n" + header, 1)
+if "require(script" in src:
+    sys.exit("unrewritten require in Customize/Controller")
+open(os.path.join(out_customize, "Controller.luau"), "w").write(src)
 
 # The deprecated SPH shim, re-pointed at the mock-backed SPHAttachments stand-in.
 shim = open(os.path.join(REPO, "Modules", "Modules", "Weapons", "Attachments", "AttachmentManager.luau")).read()
@@ -72,7 +86,7 @@ if analyze:
     print("luau-analyze: no syntax errors")
 
 code = 0
-for spec in ("spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau"):
+for spec in ("spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau", "spec_presets.luau", "spec_presets_ui.luau"):
     proc = subprocess.run([luau, spec], cwd=build, capture_output=True, text=True)
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr)

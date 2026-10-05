@@ -117,6 +117,38 @@ Config.defaults = {
 		noSlots = "This weapon has no attachment slots.",
 		count = "%d attachments",
 		countWithCapacity = "%d / %d attachments",
+
+		-- presets (saved loadouts)
+		presetDefaultName = "Loadout %d",
+		presetSaved = "Saved \"%s\"",
+		presetRenamed = "Renamed to \"%s\"",
+		presetDeleted = "Deleted \"%s\"",
+		presetLoaded = "Loaded \"%s\" - press Confirm to apply it",
+		presetDeleteConfirm = "Sure?",
+		presetsEmpty = "No saved loadouts for this gun yet",
+		presetCount = "%d loadouts",
+		presetCountWithMax = "%d / %d loadouts",
+		presetNotKept = "Saving is unavailable - loadouts will be lost when you leave",
+		presetErrors = {
+			name = "Enter a name for the loadout",
+			limit = "This gun has the maximum number of loadouts",
+			exists = "A loadout with that name already exists",
+			missing = "That loadout no longer exists",
+			no_weapon = "Equip a gun first",
+			loading = "Loadouts are still loading, try again in a moment",
+			rate_limited = "Too fast - try again in a moment",
+			storage_full = "No room to save more loadouts",
+			disabled = "Loadouts are turned off",
+			unavailable = "Loadouts are unavailable right now",
+			server_error = "Something went wrong, try again",
+			bad_request = "Something went wrong, try again",
+		},
+	},
+
+	-- ── presets (saved loadouts per gun type) ─────────────────────────────────
+	-- Server settings (limit, DataStore) live in Weapons/Presets/PresetSettings.
+	presets = {
+		enabled = true,
 	},
 
 	-- ── extension points ─────────────────────────────────────────────────────

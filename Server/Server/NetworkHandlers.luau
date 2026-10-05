@@ -11,6 +11,7 @@ local GunSetupSystem     = require(script.Parent.GunSetupSystem)
 local GunDropSystem      = require(script.Parent.GunDropSystem)
 local PlayerFireSystem   = require(script.Parent.PlayerFireSystem)
 local EventRefs          = require(script.Parent.EventRefs)
+local LoadoutPresets     = require(script.Parent.LoadoutPresets)
 
 local ServiceRefs_debris = ServiceRefs.debris
 local HttpService        = ServiceRefs.HttpService
@@ -854,12 +855,15 @@ function NetworkHandlers.init()
 	-- Payload shapes accepted (both are sent by the two customization UIs):
 	--   FireServer(loadout)          Weapons/UI/CustomizeGunGUI
 	--   FireServer(tool, loadout)    HUD/CustomizeGunGUI
-	EventRefs.applyAttachmentsEvent.OnServerEvent:Connect(function(player, firstArg, secondArg)
+	--   FireServer(tool, loadout, presetName)  applying a saved preset (LoadoutPresets)
+	EventRefs.applyAttachmentsEvent.OnServerEvent:Connect(function(player, firstArg, secondArg, thirdArg)
 		local claimedTool = nil
 		local rawLoadout  = firstArg
+		local presetName  = nil
 		if typeof(firstArg) == "Instance" then
 			claimedTool = firstArg
 			rawLoadout  = secondArg
+			presetName  = if type(thirdArg) == "string" then thirdArg else nil
 		end
 		if typeof(rawLoadout) ~= "table" then return end
 		if not player.Character then return end
@@ -889,7 +893,11 @@ function NetworkHandlers.init()
 				if loadout[slot] == nil then unchanged = false break end
 			end
 		end
-		if unchanged then return end
+		if unchanged then
+			-- Nothing to rebuild, but applying a saved preset still makes it active.
+			LoadoutPresets.OnLoadoutApplied(player, tool, loadout, presetName)
+			return
+		end
 
 		local results = Attachments:ApplyLoadout(weaponModel, tool, player, loadout)
 		local applied = {}
@@ -897,6 +905,7 @@ function NetworkHandlers.init()
 			if ok then applied[slot] = loadout[slot] end
 		end
 		Attachments:SetLoadout(tool, applied)
+		LoadoutPresets.OnLoadoutApplied(player, tool, applied, presetName)
 		RefreshPlayerArmReplication(player)
 	end)
 

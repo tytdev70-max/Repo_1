@@ -54,3 +54,24 @@
 5. Add a `MaxAttachments = 2` attribute to a Tool. The footer shows `n / 2`, a third pick is refused, and the server keeps only 2.
 6. Optional, with content: a gun with `SecondaryOpticPart` plus a canted optic lets you switch sights between the two optics. A `BarrelPart` plus a barrel attachment, with a suppressor on top, should be suppressed.
 7. Mobile: the layout scales, and the touch drag rotates the preview.
+
+## Addendum: saved loadout presets
+
+* **New files:**
+  * `Modules/Weapons/Presets/PresetSettings.luau` and `PresetBook.luau` (data rules, no Roblox dependencies);
+  * `Server/Server/LoadoutPresets.luau` (DataStore, RemoteFunction `GunEvents.LoadoutPresets`, active-preset tracking).
+* **Pipeline is unchanged:**
+  * Applying a preset goes through the same `ApplyWeaponAttachments` remote. It adds an optional third argument, the preset name, used only for active-preset bookkeeping.
+  * The server still runs `SanitizeLoadout`, and preset contents are sanitized again when applied.
+  * Old clients that send two arguments keep working.
+* **Auto-apply for new copies of a gun:**
+  * It runs on the server when the copy reaches a player's Backpack or character.
+  * It uses the same apply function, so the rules and capacity limits apply.
+  * A gun that is already equipped is not rebuilt; it updates on the next equip.
+* **Validation:** `spec_presets` (7 tests) and `spec_presets_ui` (12 tests, covering the controller flow and template view). All suites pass: 84 tests.
+* **In-Studio checks:**
+  1. Turn on API access.
+  2. Save two presets, then rejoin: they are still there.
+  3. Apply one, then get a new copy of the gun: it arrives already set up.
+  4. Drop the gun or die: the active badge is gone.
+  5. Make a normal Confirm with different picks: the active badge is gone.

@@ -67,10 +67,16 @@ function G.flushTweens()
 	end
 end
 
+local UserInputService = { InputBegan = Mocks.newSignal() }
+G.UserInputService = UserInputService
+
 G.game = {
 	GetService = function(_, name)
 		if name == "TweenService" then
 			return TweenService
+		end
+		if name == "UserInputService" then
+			return UserInputService
 		end
 		error("gui_globals: no service " .. tostring(name))
 	end,
@@ -82,9 +88,18 @@ G.warn = function(...)
 	table.insert(G.warnings, table.concat(table.pack(...) :: any, " ", 1, select("#", ...)))
 end
 G.delayed = {}
+-- spawn runs immediately but in its own coroutine, so code may yield (tests resume it).
 G.task = {
 	delay = function(_, fn) table.insert(G.delayed, fn) end,
-	spawn = function(fn, ...) fn(...) end,
+	spawn = function(fn, ...)
+		local co = coroutine.create(fn)
+		local ok, err = coroutine.resume(co, ...)
+		if not ok then
+			error(err, 2)
+		end
+		return co
+	end,
+	wait = function() end,
 }
 G.typeof = function(value)
 	local mt = getmetatable(value)

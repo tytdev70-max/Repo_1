@@ -101,7 +101,7 @@ end
 --   legacyFrames "hide" (default) | "destroy" | "keep"  — legacy template frames
 --   attachments  GunAttachments system (default: SPHAttachments)
 --   hooks        { getEquippedWeapon?, resolveGunModel?, getSourceModel?, submit?,
---                  onConfirmed? }  — override any Bridge behaviour
+--                  onConfirmed?, presets? }  — override any Bridge behaviour
 --   install      false to skip SPH event wiring (tests / custom hosts)
 function CustomizeUI.start(options: { [string]: any }?)
 	local opts = options or {}
@@ -160,6 +160,7 @@ function CustomizeUI.start(options: { [string]: any }?)
 		getEquippedWeapon = hooks.getEquippedWeapon or Bridge.getEquippedWeapon,
 		resolveGunModel = hooks.resolveGunModel or config.resolveGunModel or Bridge.resolveGunModel,
 		submit = hooks.submit or Bridge.submit,
+		presets = if config.presets.enabled then (hooks.presets or Bridge.presets()) else nil,
 		onConfirmed = function(tool, loadout)
 			local custom = hooks.onConfirmed or config.onConfirmed
 			if custom then

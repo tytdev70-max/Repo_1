@@ -69,6 +69,13 @@ function Selection:Load(loadout: Loadout?)
 	self.Changed:Fire({ kind = "load", displaced = {} })
 end
 
+-- Replaces only the current selection (e.g. loading a preset); the saved state stays,
+-- so the selection shows as changed until it is confirmed.
+function Selection:SetCurrent(loadout: Loadout?)
+	self._current = copy(loadout)
+	self.Changed:Fire({ kind = "replace", displaced = {} })
+end
+
 -- Marks the current selection as saved (after confirm).
 function Selection:MarkSaved(loadout: Loadout?)
 	self._saved = copy(loadout or self._current)

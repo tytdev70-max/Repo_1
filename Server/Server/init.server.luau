@@ -60,3 +60,6 @@ local ProximityPromptHandlers = require(script.ProximityPromptHandlers)
 PlayerLifecycle.init()
 NetworkHandlers.init()
 ProximityPromptHandlers.init()
+
+-- Saved attachment presets per gun type (DataStore). See LoadoutPresets.luau.
+require(script.LoadoutPresets).init()

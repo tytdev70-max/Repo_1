@@ -61,7 +61,7 @@ function Bridge.resolveGunModel(tool: Tool): Model?
 	return Bridge.getSourceModel(tool)
 end
 
-function Bridge.submit(tool: Tool, loadout: { [string]: string })
+function Bridge.submit(tool: Tool, loadout: { [string]: string }, presetName: string?)
 	local root = assets()
 	local events = root and root:FindFirstChild("Events")
 	local gunEvents = events and events:FindFirstChild("GunEvents")
@@ -69,7 +69,34 @@ function Bridge.submit(tool: Tool, loadout: { [string]: string })
 	if not remote then
 		error("ApplyWeaponAttachments remote not found")
 	end
-	remote:FireServer(tool, loadout)
+	remote:FireServer(tool, loadout, presetName) -- presetName: applying a saved preset
+end
+
+-- Presets: GunEvents.LoadoutPresets (RemoteFunction, created by the server's
+-- LoadoutPresets service). invoke(action, ...) -> state table (never errors).
+function Bridge.presets()
+	local remote: RemoteFunction? = nil
+	local function getRemote(): RemoteFunction?
+		if remote and remote.Parent then
+			return remote
+		end
+		remote = (SPH_Events.Find("GunEvents", "LoadoutPresets")
+			or SPH_Events.WaitFor("GunEvents", "LoadoutPresets", 5)) :: RemoteFunction?
+		return remote
+	end
+	return {
+		invoke = function(action: string, ...: any)
+			local fn = getRemote()
+			if not fn then
+				return { ok = false, error = "unavailable" }
+			end
+			local ok, result = pcall(fn.InvokeServer, fn, action, ...)
+			if not ok or type(result) ~= "table" then
+				return { ok = false, error = "unavailable" }
+			end
+			return result
+		end,
+	}
 end
 
 function Bridge.confirmedEvent(): BindableEvent

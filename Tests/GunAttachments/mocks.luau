@@ -67,6 +67,7 @@ local SUPER = {
 	Frame = "GuiObject",
 	ScrollingFrame = "GuiObject",
 	TextLabel = "GuiObject",
+	TextBox = "GuiObject",
 	ImageLabel = "GuiObject",
 	ViewportFrame = "GuiObject",
 	TextButton = "GuiButton",
@@ -191,6 +192,17 @@ InstanceMT.__tostring = function(self)
 	return self._props.Name
 end
 
+-- Property signals exist so code can connect; tests fire them by hand.
+function methods:GetPropertyChangedSignal(property)
+	local signals = rawget(self, "_propSignals")
+	if not signals then
+		signals = {}
+		rawset(self, "_propSignals", signals)
+	end
+	signals[property] = signals[property] or newSignal()
+	return signals[property]
+end
+
 function methods:IsA(className)
 	return isA(self._class, className)
 end
@@ -268,7 +280,9 @@ end
 function methods:Clone()
 	local copy = newInstance(self._class)
 	for key, value in pairs(self._props) do
-		if key ~= "Parent" and key ~= "Destroying" then
+		-- events are per instance (like Roblox); never share a signal with the copy
+		local isSignal = type(value) == "table" and getmetatable(value) == nil and type(value.Connect) == "function"
+		if key ~= "Parent" and key ~= "Destroying" and not isSignal then
 			copy._props[key] = value
 		end
 	end
@@ -279,6 +293,16 @@ function methods:Clone()
 		child:Clone().Parent = copy
 	end
 	return copy
+end
+
+function methods:GetFullName()
+	local parts = {}
+	local node = self
+	while node do
+		table.insert(parts, 1, node._props.Name or node._class)
+		node = node._props.Parent
+	end
+	return table.concat(parts, ".")
 end
 
 function methods:SetAttribute(name, value)

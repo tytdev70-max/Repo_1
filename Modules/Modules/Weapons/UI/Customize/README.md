@@ -140,3 +140,42 @@ Optional, anywhere: RevertButton, ClearAllButton (GuiButtons), Summary, Status (
 **Selection look:**
 - Selected items turn `template.selectedColor` and grow by `template.selectedScale`.
 - Right-clicking an item clears its slot.
+
+## Saved loadouts (presets)
+
+Players can save the current picks under a name, per gun type (Tool name), and apply them later.
+
+* **Settings:** `Modules/Weapons/Presets/PresetSettings.luau`. Includes `enabled`, `dataStoreName`, `maxPresetsPerGun` (nil = no limit), `maxNameLength`, `autosaveInterval` and `maxRequestsPerSecond`. The menu side can be turned off with `Config.presets.enabled = false`.
+* **Server:** `Server/Server/LoadoutPresets.luau` stores presets in a DataStore (key `player_<UserId>`). Players use it through the RemoteFunction `GunEvents.LoadoutPresets`, whose actions are `list`, `save`, `rename` and `delete`. In Studio, data is only kept between sessions with *Game Settings > Security > Enable Studio Access to API Services*.
+* **Save** stores the picks; it does not change the gun. **Load** puts a preset in the menu without applying it. **Apply** equips it (through the normal `ApplyWeaponAttachments` + `SanitizeLoadout` path) and makes it the gun type's **active** preset.
+* **Active preset:** new copies of that gun get the active preset automatically. Already-equipped guns pick it up on the next equip.
+* **When the active preset is cleared** (the presets themselves stay saved):
+  * the gun carrying it is dropped;
+  * it is lost on death;
+  * it leaves with the player (only when `dropOnLeave` is on);
+  * a normal Confirm changes that gun's attachments.
+* Controller API: `SavePreset(name?)`, `LoadPreset(name)`, `ApplyPreset(name)`, `RenamePreset(old,new)`, `DeletePreset(name)`, `RefreshPresets()`, `GetPresets()`, and the `PresetsChanged` signal.
+
+### GUI elements (all optional, found by name anywhere in the ScreenGui)
+
+| Name | Class | Purpose |
+|---|---|---|
+| `PresetNameBox` | TextBox | Name for Save and Rename (empty Save = "Loadout N") |
+| `SavePresetButton` | GuiButton | Save the current picks |
+| `LoadoutsButton` | GuiButton | Show or hide `LoadoutsFrame` (opening refreshes the list) |
+| `LoadoutsFrame` | GuiObject | The Loadouts screen (hidden at the start of every session) |
+| `LoadoutsCloseButton` | GuiButton | Hide `LoadoutsFrame` |
+| `PresetCount` | TextLabel | "3 loadouts" or "3 / 10 loadouts" |
+| `PresetsEmpty` | GuiObject | Shown when the list is empty; TextLabel shows the message or error |
+| `PresetList` | container | Holds one copy of `PresetTemplate` per preset (add a UIListLayout) |
+| `PresetTemplate` | GuiObject | Hidden prototype; children below are found at any depth |
+| ↳ `PresetName` | TextLabel | Preset name |
+| ↳ `PresetAttachments` | TextLabel | "Red Dot, Suppressor" |
+| ↳ `ActiveBadge` | GuiObject | Visible on the active preset |
+| ↳ `CarriedBadge` | GuiObject | Visible if this gun has the preset right now |
+| ↳ `ApplyButton` | GuiButton | Apply now |
+| ↳ `LoadButton` | GuiButton | Load into the menu only |
+| ↳ `RenameButton` | GuiButton | Rename to the `PresetNameBox` text |
+| ↳ `DeleteButton` | GuiButton | Click twice within 3 seconds (the text shows "Sure?") |
+
+Messages are in `Config.text` (the `preset*` strings and `presetErrors`). If you leave out an element, its feature simply doesn't appear. The generated fallback view has no presets UI.

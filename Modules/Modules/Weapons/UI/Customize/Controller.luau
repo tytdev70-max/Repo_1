@@ -16,8 +16,9 @@
 --   environment      Customize/Environment
 --   getEquippedWeapon function() -> Tool?
 --   resolveGunModel  function(tool) -> Model?   (mount-point checks)
---   submit           function(tool, loadout)    (send to server)
+--   submit           function(tool, loadout, presetName?)  (send to server)
 --   onConfirmed      function(tool, loadout)?   (local refresh after confirm)
+--   presets          { invoke(action, ...) -> state }?  saved loadouts (Bridge.presets)
 
 local UserInputService = game:GetService("UserInputService")
 
@@ -27,6 +28,8 @@ local Signal = require(script.Parent.Signal)
 
 local Controller = {}
 Controller.__index = Controller
+
+local sameLoadout -- defined with the preset helpers below
 
 function Controller.new(deps: { [string]: any })
 	local self = setmetatable({}, Controller)
@@ -45,11 +48,15 @@ function Controller.new(deps: { [string]: any })
 	self._activeSlot = nil
 	self._settingEnabled = false
 	self._connections = {}
+	self._presets = deps.presets
+	self._presetState = nil -- last server state for the open session
+	self._presetToken = 0 -- bumps per session; stale replies are ignored
 
 	self.Opened = Signal.new() -- (tool)
 	self.Closed = Signal.new() -- (reason)
 	self.Confirmed = Signal.new() -- (tool, loadout)
 	self.SelectionChanged = Signal.new() -- (loadout, change)
+	self.PresetsChanged = Signal.new() -- (presetViewState)
 
 	self._view:Bind({
 		selectSlot = function(slot)
@@ -69,6 +76,24 @@ function Controller.new(deps: { [string]: any })
 		end,
 		close = function()
 			self:Close("user")
+		end,
+		savePreset = function(name)
+			self:SavePreset(name)
+		end,
+		applyPreset = function(name)
+			self:ApplyPreset(name)
+		end,
+		loadPreset = function(name)
+			self:LoadPreset(name)
+		end,
+		deletePreset = function(name)
+			self:DeletePreset(name)
+		end,
+		renamePreset = function(oldName, newName)
+			self:RenamePreset(oldName, newName)
+		end,
+		refreshPresets = function()
+			self:RefreshPresets()
 		end,
 	})
 
@@ -150,6 +175,9 @@ function Controller:_onSelectionChanged(change)
 		self._preview:SetLoadout(loadout)
 	end
 	self:_summary()
+	if self._presetState then
+		self:_pushPresets() -- "matches the current selection" flags
+	end
 	if change.displaced and #change.displaced > 0 then
 		self._view:Flash("Removed " .. table.concat(change.displaced, ", ") .. " (not compatible with this pick)", "info")
 	end
@@ -206,6 +234,8 @@ function Controller:_buildSession(tool: Tool)
 		self._preview:SetLoadout(selection:GetAll())
 	end
 	self:_summary()
+	self._presetToken += 1
+	self:RefreshPresets()
 end
 
 -- Opens the menu for the equipped weapon. Returns true once open.
@@ -287,6 +317,7 @@ function Controller:Close(reason: string?, mode: string?)
 	end
 	self._state = "closed"
 	self._token += 1
+	self._presetToken += 1 -- replies for this session are now ignored
 	self:_setGuiEnabled(false)
 	self._environment:Release(mode)
 	if self._preview then
@@ -362,13 +393,15 @@ end
 -- Saves the selection: sanitize (same rules as the server) → optimistic local copy →
 -- server → close → local refresh (after the environment restored WalkSpeed, so the
 -- refreshed weapon stats are what sticks).
-function Controller:Confirm(): boolean
+-- presetName: set when applying a saved preset (the server then makes it the gun's
+-- active preset, auto-applied to new copies of the gun).
+function Controller:Confirm(presetName: string?): boolean
 	local tool, selection = self._tool, self._selection
 	if self._state ~= "open" or not tool or not selection then
 		return false
 	end
 	local behaviour = self._config.behaviour
-	if not selection:IsDirty() and not behaviour.confirmWhenUnchanged then
+	if not selection:IsDirty() and not behaviour.confirmWhenUnchanged and not presetName then
 		if behaviour.closeOnConfirm then
 			self:Close("confirm")
 		end
@@ -383,7 +416,7 @@ function Controller:Confirm(): boolean
 	end
 	self._attachments:SetLoadout(tool, loadout)
 
-	local ok, err = pcall(self._deps.submit, tool, loadout)
+	local ok, err = pcall(self._deps.submit, tool, loadout, presetName)
 	if not ok then
 		warn("[CustomizeUI] submit failed:", err)
 		self._view:Flash("Could not save attachments", "error")
@@ -391,6 +424,22 @@ function Controller:Confirm(): boolean
 	end
 	selection:MarkSaved(loadout)
 	self._view:PlaySound("select")
+	if self._presetState and self._presetState.ok then
+		-- what the server will record (a normal confirm that changes the gun clears it)
+		if presetName then
+			self._presetState.active = presetName
+			self._presetState.carried = presetName
+		elseif self._presetState.carried then
+			local carried = self:_findPreset(self._presetState.carried)
+			if not carried or not sameLoadout(self._attachments:SanitizeLoadout(carried.loadout, tool), loadout) then
+				if self._presetState.active == self._presetState.carried then
+					self._presetState.active = nil
+				end
+				self._presetState.carried = nil
+			end
+		end
+		self:_pushPresets()
+	end
 
 	if behaviour.closeOnConfirm then
 		self:Close("confirm")
@@ -407,6 +456,242 @@ function Controller:Confirm(): boolean
 	return true
 end
 
+-- ─── presets (saved loadouts) ────────────────────────────────────────────────
+
+function sameLoadout(a, b) -- assigns the forward-declared local
+	for slot, name in pairs(a or {}) do
+		if (b or {})[slot] ~= name then
+			return false
+		end
+	end
+	for slot in pairs(b or {}) do
+		if (a or {})[slot] == nil then
+			return false
+		end
+	end
+	return true
+end
+
+function Controller:_presetError(code: string?): string
+	local errors = self._config.text.presetErrors or {}
+	return errors[code or ""] or errors.server_error or tostring(code)
+end
+
+function Controller:_findPreset(name: string?)
+	for _, preset in ipairs(self._presetState and self._presetState.presets or {}) do
+		if preset.name == name then
+			return preset
+		end
+	end
+	return nil
+end
+
+-- "Red Dot, Suppressor" in slot order, using the menu's labels.
+function Controller:_describeLoadout(loadout: { [string]: string }): string
+	local parts, seen = {}, {}
+	for _, slot in ipairs(self._catalog and self._catalog.slots or {}) do
+		local name = loadout[slot.name]
+		if name then
+			seen[slot.name] = true
+			local label = name
+			for _, option in ipairs(slot.options) do
+				if option.name == name then
+					label = option.label or name
+					break
+				end
+			end
+			table.insert(parts, label)
+		end
+	end
+	local rest = {}
+	for slot, name in pairs(loadout) do
+		if not seen[slot] then
+			table.insert(rest, name)
+		end
+	end
+	table.sort(rest)
+	for _, name in ipairs(rest) do
+		table.insert(parts, name)
+	end
+	return if #parts > 0 then table.concat(parts, ", ") else self._config.text.empty
+end
+
+-- What views receive in SetPresets(state) (see README).
+function Controller:GetPresets()
+	local text = self._config.text
+	if not self._presets then
+		return { available = false, loading = false, presets = {} }
+	end
+	local state = self._presetState
+	if not state then
+		return { available = true, loading = true, presets = {} }
+	end
+	if not state.ok then
+		return { available = true, loading = false, error = self:_presetError(state.error), presets = {} }
+	end
+	local current = if self._selection then self._selection:GetAll() else {}
+	local list = {}
+	for _, preset in ipairs(state.presets or {}) do
+		table.insert(list, {
+			name = preset.name,
+			loadout = table.clone(preset.loadout or {}),
+			summary = self:_describeLoadout(preset.loadout or {}),
+			active = preset.name == state.active, -- auto-applied to new copies of this gun
+			carried = preset.name == state.carried, -- currently on this gun
+			matchesSelection = sameLoadout(preset.loadout, current),
+		})
+	end
+	local count = #list
+	return {
+		available = true,
+		loading = false,
+		presets = list,
+		active = state.active,
+		carried = state.carried,
+		count = count,
+		max = state.max,
+		canSave = state.max == nil or count < state.max,
+		persistent = state.persistent ~= false,
+		maxNameLength = state.maxNameLength,
+		countText = if state.max
+			then text.presetCountWithMax:format(count, state.max)
+			else text.presetCount:format(count),
+	}
+end
+
+function Controller:_pushPresets()
+	local viewState = self:GetPresets()
+	if self._view.SetPresets then
+		self._view:SetPresets(viewState)
+	end
+	self.PresetsChanged:Fire(viewState)
+end
+
+-- Sends a request without blocking; onResult(state) runs only if the same session is
+-- still open when the reply arrives.
+function Controller:_presetRequest(action: string, args: { any }, onResult: ((any) -> ())?)
+	local presets = self._presets
+	if not presets then
+		self._view:Flash(self:_presetError("disabled"), "warning")
+		return
+	end
+	local token, tool = self._presetToken, self._tool
+	task.spawn(function()
+		local state = presets.invoke(action, table.unpack(args, 1, args.n or #args))
+		if self._presetToken ~= token or self._tool ~= tool or self._state ~= "open" then
+			return
+		end
+		if type(state) ~= "table" then
+			state = { ok = false, error = "unavailable" }
+		end
+		if state.ok then
+			self._presetState = state
+			self:_pushPresets()
+		end
+		if onResult then
+			onResult(state)
+		end
+	end)
+end
+
+function Controller:RefreshPresets()
+	self._presetState = nil
+	self:_pushPresets()
+	if not self._presets or self._state ~= "open" then
+		return
+	end
+	self:_presetRequest("list", { n = 0 }, function(state)
+		if not state.ok then
+			self._presetState = state
+			self:_pushPresets()
+		elseif state.persistent == false and not self._warnedNotKept then
+			self._warnedNotKept = true
+			self._view:Flash(self._config.text.presetNotKept, "info")
+		end
+	end)
+end
+
+-- Saves the CURRENT selection as a preset for this gun (the gun is not changed).
+-- An empty name gets "Loadout N"; an existing name is overwritten.
+function Controller:SavePreset(name: string?)
+	if self._state ~= "open" or not self._selection then
+		return
+	end
+	local text = self._config.text
+	local wanted = if type(name) == "string" then name:match("^%s*(.-)%s*$") else ""
+	if wanted == "" then
+		local taken = {}
+		local list = self._presetState and self._presetState.presets or {}
+		for _, preset in ipairs(list) do
+			taken[preset.name] = true
+		end
+		local index = #list + 1
+		while taken[text.presetDefaultName:format(index)] do
+			index += 1
+		end
+		wanted = text.presetDefaultName:format(index)
+	end
+	local loadout = self._attachments:SanitizeLoadout(self._selection:GetAll(), self._tool)
+	self:_presetRequest("save", { wanted, loadout, n = 2 }, function(state)
+		if state.ok then
+			self._view:PlaySound("select")
+			self._view:Flash(text.presetSaved:format(state.saved or wanted), "info")
+		else
+			self._view:Flash(self:_presetError(state.error), "warning")
+		end
+	end)
+end
+
+function Controller:RenamePreset(oldName: string, newName: string?)
+	if self._state ~= "open" or type(oldName) ~= "string" then
+		return
+	end
+	self:_presetRequest("rename", { oldName, newName or "", n = 2 }, function(state)
+		if state.ok then
+			self._view:Flash(self._config.text.presetRenamed:format(state.renamed or tostring(newName)), "info")
+		else
+			self._view:Flash(self:_presetError(state.error), "warning")
+		end
+	end)
+end
+
+function Controller:DeletePreset(name: string)
+	if self._state ~= "open" or type(name) ~= "string" then
+		return
+	end
+	self:_presetRequest("delete", { name, n = 1 }, function(state)
+		if state.ok then
+			self._view:PlaySound("deselect")
+			self._view:Flash(self._config.text.presetDeleted:format(name), "info")
+		else
+			self._view:Flash(self:_presetError(state.error), "warning")
+		end
+	end)
+end
+
+-- Puts a preset into the selection WITHOUT applying it (Confirm applies as usual).
+function Controller:LoadPreset(name: string): boolean
+	local preset = self._state == "open" and self._selection and self:_findPreset(name)
+	if not preset then
+		self._view:Flash(self:_presetError("missing"), "warning")
+		return false
+	end
+	self._selection:SetCurrent(preset.loadout)
+	self._view:Flash(self._config.text.presetLoaded:format(name), "info")
+	return true
+end
+
+-- Applies a saved preset to the gun now; it becomes the gun's active preset.
+function Controller:ApplyPreset(name: string): boolean
+	local preset = self._state == "open" and self._selection and self:_findPreset(name)
+	if not preset then
+		self._view:Flash(self:_presetError("missing"), "warning")
+		return false
+	end
+	self._selection:SetCurrent(preset.loadout)
+	return self:Confirm(name)
+end
+
 function Controller:Destroy()
 	self:Close("destroy", "force")
 	for _, connection in ipairs(self._connections) do
@@ -420,6 +705,7 @@ function Controller:Destroy()
 	self.Opened:DisconnectAll()
 	self.Closed:DisconnectAll()
 	self.Confirmed:DisconnectAll()
+	self.PresetsChanged:DisconnectAll()
 	self.SelectionChanged:DisconnectAll()
 end
 

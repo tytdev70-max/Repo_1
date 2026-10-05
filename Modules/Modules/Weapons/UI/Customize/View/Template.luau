@@ -23,6 +23,24 @@
 --     RevertButton, ClearAllButton   GuiButtons
 --     Summary                        TextLabel  - "2 attachments" / "2 / 3"
 --     Status                         TextLabel  - capacity / conflict messages (created if missing)
+--   Saved loadouts (presets), all optional; the feature is simply absent without them:
+--     PresetNameBox                  TextBox    - name for Save (empty = "Loadout N")
+--     SavePresetButton               GuiButton  - saves the current picks (gun unchanged)
+--     LoadoutsButton                 GuiButton  - shows/hides LoadoutsFrame
+--     LoadoutsFrame                  GuiObject  - the separate "Loadouts" screen
+--       LoadoutsCloseButton*         GuiButton
+--       PresetCount*                 TextLabel  - "3 loadouts" / "3 / 10 loadouts"
+--       PresetsEmpty*                GuiObject  - shown when there are none (TextLabel: message)
+--       PresetList                   container  - one copy of PresetTemplate per preset
+--         PresetTemplate             GuiObject  - hidden prototype, copied per preset:
+--           PresetName               TextLabel
+--           PresetAttachments*       TextLabel  - "Red Dot, Suppressor"
+--           ActiveBadge*             GuiObject  - visible on the active (auto-applied) preset
+--           CarriedBadge*            GuiObject  - visible if this gun has it right now
+--           ApplyButton*             GuiButton  - apply to the gun now (becomes active)
+--           LoadButton*              GuiButton  - load into the menu without applying
+--           RenameButton*            GuiButton  - rename to the PresetNameBox text
+--           DeleteButton*            GuiButton  - click twice to delete
 --
 -- Columns: a column is used for slot X when it has the attribute Slot = "X", or is named
 --   "X". Otherwise the columns named "column" are assigned in order to the legacy slots
@@ -134,6 +152,22 @@ function TemplateView.new(context: { [string]: any })
 	self._summary = findDeep(gui, "Summary", "TextLabel")
 	self._status = findDeep(gui, "Status", "TextLabel") or self:_createStatus()
 
+	-- presets (all optional)
+	self._presetNameBox = findDeep(gui, "PresetNameBox", "TextBox")
+	self._savePresetButton = findDeep(gui, "SavePresetButton", "GuiButton")
+	self._loadoutsButton = findDeep(gui, "LoadoutsButton", "GuiButton")
+	self._loadoutsFrame = findDeep(gui, "LoadoutsFrame", "GuiObject")
+	self._loadoutsClose = findDeep(gui, "LoadoutsCloseButton", "GuiButton")
+	self._presetList = findDeep(gui, "PresetList")
+	self._presetTemplate = findDeep(gui, "PresetTemplate", "GuiObject")
+	self._presetsEmpty = findDeep(gui, "PresetsEmpty", "GuiObject")
+	self._presetCount = findDeep(gui, "PresetCount", "TextLabel")
+	self._presetVisibility = {} -- element -> original Visible (restored on Destroy)
+	if self._presetTemplate then
+		self._presetVisibility[self._presetTemplate] = self._presetTemplate.Visible
+		self._presetTemplate.Visible = false
+	end
+
 	self:_collectColumns()
 	self:_connectButtons()
 	return self
@@ -237,6 +271,30 @@ function TemplateView:_connectButtons()
 	if self._revertButton then
 		self:_connect(self._revertButton.MouseButton1Click, function()
 			self:_act("revert")
+		end)
+	end
+	if self._savePresetButton then
+		self:_connect(self._savePresetButton.MouseButton1Click, function()
+			local box = self._presetNameBox
+			local name = if box then box.Text else nil
+			if box then
+				box.Text = ""
+			end
+			self:_act("savePreset", name)
+		end)
+	end
+	if self._loadoutsButton and self._loadoutsFrame then
+		self:_connect(self._loadoutsButton.MouseButton1Click, function()
+			local frame = self._loadoutsFrame
+			frame.Visible = not frame.Visible
+			if frame.Visible then
+				self:_act("refreshPresets")
+			end
+		end)
+	end
+	if self._loadoutsClose and self._loadoutsFrame then
+		self:_connect(self._loadoutsClose.MouseButton1Click, function()
+			self._loadoutsFrame.Visible = false
 		end)
 	end
 	if self._clearAllButton then
@@ -409,7 +467,128 @@ function TemplateView:_wireItem(frame: GuiObject, slotName: string, option: any)
 	end)
 end
 
+local function child(root: Instance, name: string, className: string?): any
+	local found = root:FindFirstChild(name, true)
+	if found and (not className or found:IsA(className)) then
+		return found
+	end
+	return nil
+end
+
+-- Hides (or restores) a presets element, remembering its designed visibility.
+function TemplateView:_presetShown(element: GuiObject?, shown: boolean)
+	if not element then
+		return
+	end
+	if self._presetVisibility[element] == nil then
+		self._presetVisibility[element] = element.Visible
+	end
+	element.Visible = shown and self._presetVisibility[element]
+end
+
+-- state: see Controller:GetPresets()
+function TemplateView:SetPresets(state: { [string]: any })
+	local available = state.available ~= false
+	self:_presetShown(self._savePresetButton, available)
+	self:_presetShown(self._presetNameBox, available)
+	self:_presetShown(self._loadoutsButton, available)
+	if not available and self._loadoutsFrame then
+		self._loadoutsFrame.Visible = false
+	end
+	if self._presetCount then
+		self._presetCount.Text = state.countText or ""
+	end
+
+	local list, template = self._presetList, self._presetTemplate
+	if list then
+		for _, item in ipairs(list:GetChildren()) do
+			if item:GetAttribute(AUTO_ATTRIBUTE) then
+				item:Destroy()
+			end
+		end
+	end
+	local presets = state.presets or {}
+	if self._presetsEmpty then
+		self._presetsEmpty.Visible = #presets == 0
+		if self._presetsEmpty:IsA("TextLabel") then
+			self._presetsEmpty.Text = if state.loading then "..." else (state.error or self._text.presetsEmpty)
+		end
+	end
+	if not list or not template then
+		return
+	end
+	for index, preset in ipairs(presets) do
+		local item = template:Clone()
+		item.Name = "Preset_" .. preset.name
+		item.Visible = true
+		item.LayoutOrder = index
+		item:SetAttribute(AUTO_ATTRIBUTE, true)
+		item:SetAttribute("Preset", preset.name)
+		local nameLabel = child(item, "PresetName", "TextLabel")
+		if nameLabel then
+			nameLabel.Text = preset.name
+		end
+		local attachmentsLabel = child(item, "PresetAttachments", "TextLabel")
+		if attachmentsLabel then
+			attachmentsLabel.Text = preset.summary or ""
+		end
+		local activeBadge = child(item, "ActiveBadge", "GuiObject")
+		if activeBadge then
+			activeBadge.Visible = preset.active == true
+		end
+		local carriedBadge = child(item, "CarriedBadge", "GuiObject")
+		if carriedBadge then
+			carriedBadge.Visible = preset.carried == true
+		end
+		local function onClick(buttonName: string, fn: () -> ())
+			local button = child(item, buttonName, "GuiButton")
+			if button then
+				button.MouseButton1Click:Connect(fn)
+			end
+			return button
+		end
+		onClick("ApplyButton", function()
+			self:_act("applyPreset", preset.name)
+		end)
+		onClick("LoadButton", function()
+			self:_act("loadPreset", preset.name)
+		end)
+		onClick("RenameButton", function()
+			local box = self._presetNameBox
+			local newName = if box then box.Text else ""
+			if box then
+				box.Text = ""
+			end
+			self:_act("renamePreset", preset.name, newName)
+		end)
+		-- delete needs a second click within 3 seconds
+		local armedAt = nil
+		local deleteButton
+		deleteButton = onClick("DeleteButton", function()
+			if armedAt and os.clock() - armedAt <= 3 then
+				self:_act("deletePreset", preset.name)
+				return
+			end
+			armedAt = os.clock()
+			local original = if deleteButton:IsA("TextButton") then deleteButton.Text else nil
+			if original then
+				deleteButton.Text = self._text.presetDeleteConfirm
+			end
+			task.delay(3, function()
+				armedAt = nil
+				if original and deleteButton.Parent then
+					deleteButton.Text = original
+				end
+			end)
+		end)
+		item.Parent = list
+	end
+end
+
 function TemplateView:SetCatalog(catalog: { slots: { any } })
+	if self._loadoutsFrame then
+		self._loadoutsFrame.Visible = false -- every session starts on the customize screen
+	end
 	-- reset everything from the previous weapon
 	for frame in pairs(self._original) do
 		if frame.Parent then
@@ -574,6 +753,11 @@ function TemplateView:Destroy()
 	for _, descendant in ipairs(self._gui:GetDescendants()) do
 		if descendant:GetAttribute(AUTO_ATTRIBUTE) then
 			descendant:Destroy()
+		end
+	end
+	for element, visible in pairs(self._presetVisibility) do
+		if element.Parent then
+			element.Visible = visible
 		end
 	end
 end
