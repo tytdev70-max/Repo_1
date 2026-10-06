@@ -40,6 +40,20 @@ do
 		warn("[CustomizeUI] ModuleScript Customize.View.Template not found - the Studio GUI can't be used")
 	end
 end
+-- View/Gunsmith is optional too (ui = "gunsmith").
+local GunsmithView = nil
+do
+	local module = script.View:FindFirstChild("Gunsmith")
+	if module then
+		local ok, result = pcall(require, module)
+		if ok then
+			GunsmithView = result
+		else
+			warn("[CustomizeUI] View.Gunsmith failed to load: " .. tostring(result))
+		end
+	end
+end
+local TestHud = require(script.TestHud)
 local Bridge = require(script.Bridge)
 
 local CustomizeUI = {}
@@ -48,9 +62,26 @@ CustomizeUI.Config = Config
 CustomizeUI.Controller = Controller
 CustomizeUI.View = View
 CustomizeUI.TemplateView = TemplateView
+CustomizeUI.GunsmithView = GunsmithView
 CustomizeUI.Bridge = Bridge
 
 local GUI_NAME = "CustomizeGunGUI" -- other scripts read PlayerGui.CustomizeGunGUI.Enabled
+local GUNSMITH_NAME = "Gunsmith" -- ...or PlayerGui.Gunsmith.Enabled (WeaponInput/WeaponFireMod check both)
+local testService: any = nil
+
+-- GameConfig.customizeMenu: "Gunsmith" (default) | "CustomizeGunGUI".
+function CustomizeUI.getMenuSetting(): string
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local assets = ReplicatedStorage:FindFirstChild("SPH_Assets")
+	local module = assets and assets:FindFirstChild("GameConfig")
+	if module and module:IsA("ModuleScript") then
+		local ok, gameConfig = pcall(require, module)
+		if ok and type(gameConfig) == "table" and type(gameConfig.customizeMenu) == "string" then
+			return gameConfig.customizeMenu
+		end
+	end
+	return "Gunsmith"
+end
 local LEGACY_FRAMES = { "AttachmentsFrame", "MainDisplayFrame" }
 
 local current: any = nil
@@ -103,16 +134,40 @@ end
 --   hooks        { getEquippedWeapon?, resolveGunModel?, getSourceModel?, submit?,
 --                  onConfirmed?, presets? }  — override any Bridge behaviour
 --   install      false to skip SPH event wiring (tests / custom hosts)
+-- Without opts.ui, GameConfig.customizeMenu picks the menu ("Gunsmith" -> ui "gunsmith").
 function CustomizeUI.start(options: { [string]: any }?)
 	local opts = options or {}
 	CustomizeUI.stop()
 
+	if opts.ui == nil and opts.view == nil then
+		opts = table.clone(opts)
+		opts.ui = if string.lower(CustomizeUI.getMenuSetting()) == "gunsmith" then "gunsmith" else "template"
+	end
 	local config = Config.resolve(opts)
 	local attachments = opts.attachments
 		or require(script:FindFirstAncestor("Modules").Weapons.Attachments.SPHAttachments)
 	local hooks = opts.hooks or {}
-	local gui = prepareGui(opts.gui, opts.legacyFrames or "hide", false)
+	local gui = nil
 	local viewFactory = config.view
+	if not viewFactory and config.ui == "gunsmith" then
+		local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+		local candidate = opts.gui or playerGui:FindFirstChild(GUNSMITH_NAME)
+		if candidate and GunsmithView and GunsmithView.isGunsmith(candidate) then
+			gui = candidate
+			viewFactory = GunsmithView.new
+		else
+			warn("[CustomizeUI] Gunsmith menu not usable (" .. (if candidate then candidate:GetFullName()
+				.. " is missing Container.Attachments.Attachments.AttachmentCategory.AttachmentCategoryTemplate"
+				.. " or ...Attachments.AttachmentTemplate" elseif GunsmithView then "PlayerGui.Gunsmith not found"
+				else "View.Gunsmith module missing") .. "); using the CustomizeGunGUI menu")
+			config.ui = "template"
+			if candidate and candidate.Name == GUNSMITH_NAME then
+				opts = table.clone(opts)
+				opts.gui = nil
+			end
+		end
+	end
+	gui = gui or prepareGui(opts.gui, opts.legacyFrames or "hide", false)
 	if not viewFactory then
 		if config.ui == "template" and TemplateView and TemplateView.isTemplate(gui) then
 			viewFactory = TemplateView.new
@@ -150,7 +205,27 @@ function CustomizeUI.start(options: { [string]: any }?)
 	environmentOptions.setPromptsEnabled = hooks.setPromptsEnabled or Bridge.setPromptsEnabled
 	local environment = Environment.new(environmentOptions)
 
-	local controller = Controller.new({
+	local controller = nil
+	local test = nil
+	if config.test.enabled ~= false then
+		test = hooks.test or Bridge.test()
+		if not hooks.test then
+			testService = test
+		end
+	end
+	local testHud = if test
+		then (hooks.testHud or TestHud.new({
+			playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui"),
+			text = config.text.testReturn,
+			onReturn = function()
+				if controller then
+					controller:EndTest()
+				end
+			end,
+		}))
+		else nil
+
+	controller = Controller.new({
 		config = config,
 		attachments = attachments,
 		gui = gui,
@@ -161,6 +236,9 @@ function CustomizeUI.start(options: { [string]: any }?)
 		resolveGunModel = hooks.resolveGunModel or config.resolveGunModel or Bridge.resolveGunModel,
 		submit = hooks.submit or Bridge.submit,
 		presets = if config.presets.enabled then (hooks.presets or Bridge.presets()) else nil,
+		resolveWeaponType = hooks.resolveWeaponType or Bridge.resolveWeaponType,
+		test = test,
+		testHud = testHud,
 		onConfirmed = function(tool, loadout)
 			local custom = hooks.onConfirmed or config.onConfirmed
 			if custom then
@@ -191,6 +269,10 @@ function CustomizeUI.stop()
 		current:Destroy()
 		current = nil
 	end
+	if testService then
+		testService.destroy()
+		testService = nil
+	end
 end
 
 function CustomizeUI.get()
@@ -208,9 +290,28 @@ function CustomizeUI.diagnose()
 	end
 	local player = Players.LocalPlayer
 	local playerGui = player and player:FindFirstChild("PlayerGui")
+	local menu = CustomizeUI.getMenuSetting()
+	local gunsmith = string.lower(menu) == "gunsmith"
+	check(true, "GameConfig.customizeMenu = " .. menu)
+	if gunsmith then
+		local gs = playerGui and playerGui:FindFirstChild(GUNSMITH_NAME)
+		check(gs ~= nil, "PlayerGui." .. GUNSMITH_NAME .. " exists (cloned from HUD.GunGUIs.Gunsmith)")
+		check(GunsmithView ~= nil, "Customize.View.Gunsmith module loaded")
+		if gs and GunsmithView then
+			check(GunsmithView.isGunsmith(gs), "Gunsmith frames present (Container.Attachments.Attachments.AttachmentCategory"
+				.. ".AttachmentCategoryTemplate and ...Attachments.AttachmentTemplate)")
+			check(current == nil or current._gui == gs, "menu uses PlayerGui.Gunsmith")
+		end
+		check(workspace:FindFirstChild("GunsmithTestZone", true) ~= nil, "test area Workspace.GunsmithTestZone exists (Test Loadout)")
+	end
 	local gui = playerGui and playerGui:FindFirstChild(GUI_NAME)
 	check(current ~= nil, "menu started (CustomizeUI.start was called)")
-	check(gui ~= nil, "PlayerGui." .. GUI_NAME .. " exists")
+	if gunsmith then
+		gui = nil -- the checks below are for the CustomizeGunGUI menu
+	end
+	if not gunsmith then
+		check(gui ~= nil, "PlayerGui." .. GUI_NAME .. " exists")
+	end
 	if gui then
 		local copies = 0
 		for _, child in ipairs(playerGui:GetChildren()) do

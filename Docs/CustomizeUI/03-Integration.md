@@ -75,3 +75,28 @@
   3. Apply one, then get a new copy of the gun: it arrives already set up.
   4. Drop the gun or die: the active badge is gone.
   5. Make a normal Confirm with different picks: the active badge is gone.
+
+## Addendum: Gunsmith menu and Test Loadout
+
+* **New files:**
+  * `Customize/View/Gunsmith.luau` (view for `HUD.GunGUIs.Gunsmith`);
+  * `Customize/TestHud.luau`;
+  * `HUD/Gunsmith.luau` (LocalScript for inside the Gunsmith);
+  * `Weapons/Gunsmith/GunsmithTestSettings.luau`;
+  * `Server/Server/GunsmithTest.luau`.
+* **Menu choice:**
+  * `GameConfig.customizeMenu` (`"Gunsmith"` | `"CustomizeGunGUI"`) is read by `Weapons/UI/CustomizeGunGUI` (which ScreenGui to copy) and by `CustomizeUI.start` (when no `ui` is given).
+  * `WeaponInput` and `WeaponFireMod` now block weapon input while either `PlayerGui.Gunsmith` or `PlayerGui.CustomizeGunGUI` is enabled.
+* **Pipeline is unchanged:** Apply goes through the same controller `Confirm` path: `ApplyWeaponAttachments`, then the server's `SanitizeLoadout`.
+* **Test guns:**
+  * They are copies of the real Tool, given a sanitized loadout, and are mounted by the normal `EquipGun` path.
+  * The `GunsmithTestGun` attribute makes `GunDropSystem.SpawnGun` destroy them instead of dropping them (drop, death, leave). `ApplyWeaponAttachments` ignores them, and `LoadoutPresets` never treats them as carriers or auto-applies to them.
+* **Controller:** `SetWeapon(name, { tool, weaponType })` gets a second argument; existing views ignore it.
+* **Validation:** `spec_gunsmith` (14 tests, covering the view on the referenced hierarchy and the Test/Return/timeout/death flows). All suites pass: 98 tests.
+* **In-Studio checks:**
+  1. Set `customizeMenu = "Gunsmith"`, put the LocalScript in the Gunsmith, and add `GunsmithTestZone`.
+  2. Open the menu at the table. Check categories, lists, Back, picking, None, Clear All, Cancel and Apply.
+  3. Press Save, then rejoin. Check that a preset exists, for example via `CustomizeUI.get():GetPresets()` or the `GunEvents.LoadoutPresets` list.
+  4. Press Test: you arrive at the zone holding the build and the real gun is unchanged.
+  5. Press Return: you are back where you were and the menu reopens with the same picks.
+  6. Die during a test: no dropped test gun.

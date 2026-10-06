@@ -378,6 +378,9 @@ function LoadoutPresets.OnLoadoutApplied(player: Player, tool: Tool, applied: { 
 	if not session or not session.loaded or not Settings.enabled then
 		return
 	end
+	if tool:GetAttribute("GunsmithTestGun") then
+		return -- Test Loadout copy: never a preset carrier
+	end
 	local gun = tool.Name
 	local book = session.book
 	if type(presetName) == "string" then

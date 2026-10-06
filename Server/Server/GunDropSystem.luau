@@ -53,6 +53,11 @@ function GunDropSystem.MakePickUpAble(tool, model, mainPart)
 end
 
 function GunDropSystem.SpawnGun(tool, gunPosition, dropPlayer)
+	-- Test Loadout copies (GunsmithTest) never become world pickups.
+	if tool and tool:GetAttribute("GunsmithTestGun") then
+		tool:Destroy()
+		return nil
+	end
 	local wepStats   = require(tool.SPH_Weapon.WeaponStats)
 	local dropModel  = assets.WeaponModels:FindFirstChild(tool.Name)
 	if not dropModel then return end

@@ -51,12 +51,18 @@ function Controller.new(deps: { [string]: any })
 	self._presets = deps.presets
 	self._presetState = nil -- last server state for the open session
 	self._presetToken = 0 -- bumps per session; stale replies are ignored
+	self._test = deps.test -- Test Loadout service (Bridge.test) or nil
+	self._testHud = deps.testHud
+	self._testing = nil -- while testing: { tool, selection, activeSlot } to resume with
+	self._testRequest = false
 
 	self.Opened = Signal.new() -- (tool)
 	self.Closed = Signal.new() -- (reason)
 	self.Confirmed = Signal.new() -- (tool, loadout)
 	self.SelectionChanged = Signal.new() -- (loadout, change)
 	self.PresetsChanged = Signal.new() -- (presetViewState)
+	self.TestStarted = Signal.new() -- (tool)
+	self.TestEnded = Signal.new() -- (reason: "returned" | "timeout" | "died" | "left" | ...)
 
 	self._view:Bind({
 		selectSlot = function(slot)
@@ -95,7 +101,19 @@ function Controller.new(deps: { [string]: any })
 		refreshPresets = function()
 			self:RefreshPresets()
 		end,
+		testLoadout = function()
+			self:TestLoadout()
+		end,
+		endTest = function()
+			self:EndTest()
+		end,
 	})
+
+	if self._test and self._test.ended then
+		table.insert(self._connections, self._test.ended:Connect(function(reason)
+			self:_onTestEnded(reason)
+		end))
+	end
 
 	-- Anything else disabling the ScreenGui closes the menu (legacy contract).
 	table.insert(self._connections, self._gui:GetPropertyChangedSignal("Enabled"):Connect(function()
@@ -214,7 +232,12 @@ function Controller:_buildSession(tool: Tool)
 	})
 	self._selection = selection
 
-	self._view:SetWeapon(tool.Name)
+	local weaponType = nil
+	if deps.resolveWeaponType then
+		local ok, result = pcall(deps.resolveWeaponType, tool)
+		weaponType = if ok and type(result) == "string" then result else nil
+	end
+	self._view:SetWeapon(tool.Name, { tool = tool, weaponType = weaponType })
 	self._view:SetCatalog(catalog)
 	-- Saved picks are loaded as-is, even for slots this weapon doesn't show (the
 	-- legacy menu kept and re-sent them too; the server sanitizes).
@@ -251,6 +274,10 @@ function Controller:Open(): boolean
 	self:_debug("Open requested; state =", self._state, "equipped SPH tool =", tool)
 	if not tool then
 		warn("[CustomizeUI] can't open: no equipped Tool with an SPH_Weapon child")
+		return false
+	end
+	if self._testing or self._testRequest then
+		self:_debug("Open ignored: testing a loadout")
 		return false
 	end
 	if self._state ~= "closed" then
@@ -692,8 +719,109 @@ function Controller:ApplyPreset(name: string): boolean
 	return self:Confirm(name)
 end
 
+-- ─── Test Loadout ─────────────────────────────────────────────────────────────
+
+function Controller:_testError(code: string?)
+	local errors = self._config.text.testErrors or {}
+	self._view:Flash(errors[code or ""] or errors.unavailable or "Testing is unavailable", "error")
+end
+
+function Controller:IsTesting(): boolean
+	return self._testing ~= nil
+end
+
+-- Tries the current picks in the test area (the real gun is not changed). The menu
+-- closes; returning (button, or the server's time limit) reopens it with the same picks.
+function Controller:TestLoadout(): boolean
+	if self._state ~= "open" or not self._selection or not self._tool then
+		return false
+	end
+	if not self._test or self._config.test.enabled == false then
+		self:_testError("disabled")
+		return false
+	end
+	if self._testRequest or self._testing then
+		return false
+	end
+	local tool = self._tool
+	local resume = { tool = tool, selection = self._selection:GetAll(), activeSlot = self._activeSlot }
+	local loadout = self._attachments:SanitizeLoadout(resume.selection, tool)
+	self._testRequest = true
+	local ok, result = pcall(self._test.invoke, "start", tool, loadout)
+	self._testRequest = false
+	if not ok or type(result) ~= "table" or not result.ok then
+		if self._state == "open" then
+			self:_testError(if ok and type(result) == "table" then result.error else nil)
+		end
+		return false
+	end
+	self._testing = resume
+	if self._state ~= "closed" then
+		self:Close("test")
+	end
+	if self._testHud then
+		self._testHud:Show()
+	end
+	self.TestStarted:Fire(tool)
+	-- the test may already be over (e.g. died instantly) before this reply arrived
+	if self._test.isTesting and not self._test.isTesting() then
+		self:_onTestEnded("ended")
+	end
+	return true
+end
+
+-- Leaves the test area (the server ends the test; _onTestEnded resumes the menu).
+function Controller:EndTest()
+	if not self._testing or self._ending then
+		return
+	end
+	self._ending = true
+	local ok, result = pcall(self._test.invoke, "stop")
+	self._ending = false
+	if not ok or type(result) ~= "table" or not result.ok then
+		warn("[Gunsmith] couldn't leave the test:", if ok and type(result) == "table" then result.error else result)
+	end
+	if self._testing and self._test.isTesting and not self._test.isTesting() then
+		self:_onTestEnded("returned") -- the end notice was missed or not sent
+	end
+end
+
+function Controller:_onTestEnded(reason: string?)
+	local resume = self._testing
+	if not resume then
+		return
+	end
+	self._testing = nil
+	if self._testHud then
+		self._testHud:Hide()
+	end
+	self.TestEnded:Fire(reason or "ended")
+	if reason ~= "returned" and reason ~= "timeout" then
+		return -- died / left / lost: nothing to go back to
+	end
+	task.spawn(function()
+		local getEquipped = self._deps.getEquippedWeapon
+		local deadline = os.clock() + (self._config.test.resumeTimeout or 5)
+		while getEquipped() ~= resume.tool and os.clock() < deadline do
+			task.wait(0.1)
+		end
+		if getEquipped() ~= resume.tool or self._state ~= "closed" or self._testing then
+			return
+		end
+		if self:Open() and self._tool == resume.tool and self._selection then
+			self._selection:SetCurrent(resume.selection)
+			if resume.activeSlot then
+				self:SelectSlot(resume.activeSlot)
+			end
+		end
+	end)
+end
+
 function Controller:Destroy()
 	self:Close("destroy", "force")
+	if self._testHud then
+		self._testHud:Destroy()
+	end
 	for _, connection in ipairs(self._connections) do
 		connection:Disconnect()
 	end
@@ -707,6 +835,8 @@ function Controller:Destroy()
 	self.Confirmed:DisconnectAll()
 	self.PresetsChanged:DisconnectAll()
 	self.SelectionChanged:DisconnectAll()
+	self.TestStarted:DisconnectAll()
+	self.TestEnded:DisconnectAll()
 end
 
 return Controller

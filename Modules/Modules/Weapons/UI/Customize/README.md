@@ -179,3 +179,52 @@ Players can save the current picks under a name, per gun type (Tool name), and a
 | ↳ `DeleteButton` | GuiButton | Click twice within 3 seconds (the text shows "Sure?") |
 
 Messages are in `Config.text` (the `preset*` strings and `presetErrors`). If you leave out an element, its feature simply doesn't appear. The generated fallback view has no presets UI.
+
+## Gunsmith menu (`ui = "gunsmith"`)
+
+`GameConfig.customizeMenu` picks the menu the customize table opens:
+- `"Gunsmith"` (default) uses `HUD.GunGUIs.Gunsmith`;
+- `"CustomizeGunGUI"` uses the previous menu.
+
+`Weapons/UI/CustomizeGunGUI` copies the chosen ScreenGui into PlayerGui (only one of them). If the chosen one is missing, it warns and uses the other.
+
+**Setup in Studio**
+1. Put the LocalScript `HUD/Gunsmith.luau` directly inside `HUD.GunGUIs.Gunsmith`. It replaces a script that only references the frames; its options table works like the CustomizeGunGUI one.
+2. Copy `Customize/View/Gunsmith.luau` and `Customize/TestHud.luau` into the Customize module.
+3. Add a test area: a Part, Model or Folder named `GunsmithTestZone` anywhere in Workspace.
+4. Optionally, set `WeaponType = "Rifle"` in a gun's WeaponStats. A string attribute `WeaponType` on the Tool works as a fallback.
+
+**What the elements do** (the full hierarchy is at the top of `View/Gunsmith.luau`):
+- **AttachmentCategory**: one copy of `AttachmentCategoryTemplate` per slot the gun can use.
+  - `AttachmentType` shows the slot name (upper case by default).
+  - `AttachmentName` shows the picked attachment or "None".
+  - Clicking `InvisibleButton` opens that slot's list and shows `BackToCategoryAttachments`.
+- **Attachments (list)**: one copy of `AttachmentTemplate` per attachment, with "None" first (clears the slot) when the slot may be empty.
+  - The picked entry shows its optional `Selected` child; without one, `AttachmentName` is tinted.
+- **ApplyLoadout**: apply and close.
+- **CancelLoadout**: discard and close.
+- **ClearAllAtachments**: empty every slot; Apply puts the result on the gun.
+- **SaveLoadout**: save as a preset with a random name ("Viper 27"), avoiding names already saved for that gun. Presets work normally (apply/active/auto-apply through the controller API); there is just no list UI yet.
+- **TestLoadout**: try the build; see below.
+- **Optional:** a `Status` TextLabel anywhere shows messages. Without one, only errors are printed (as warnings).
+
+### Test Loadout
+
+1. **Starting a test** (server `Server/Server/GunsmithTest.luau`):
+   - The player gets a temporary copy of the equipped gun with the current picks; the real gun stays unchanged in the Backpack.
+   - The player is moved onto the test area, and the menu closes.
+2. **Returning:**
+   - A return button appears at the top left. It uses `PlayerGui.GunsmithTestHUD` with a `ReturnButton` if you design one; otherwise a simple one is created.
+   - Return brings the player back to where they were and re-equips the real gun. The menu then reopens with the same unsaved picks.
+3. **When the test ends by itself:**
+   - When the time limit (if set) runs out, the player returns and the menu reopens.
+   - On death or leaving, the test simply ends; the menu does not reopen.
+4. **Rules for the temporary gun:**
+   - It has the attribute `GunsmithTestGun`.
+   - It can't be dropped (drops destroy it), customized, or used for presets.
+   - It is removed when the test ends.
+   - The menu can't be opened during a test.
+5. **Server settings:** `Weapons/Gunsmith/GunsmithTestSettings.luau` (`enabled`, `zoneName`, `arrivalHeight`, `maxDuration`, `refillAmmo`, `cooldown`). The client can switch Test off with `test = { enabled = false }`.
+6. **Remote:** `GunEvents.GunsmithTest` (RemoteFunction, `"start"`/`"stop"`).
+7. **Player attributes:** `GunsmithTesting` while a test runs; `GunsmithTestEnd` holds the reason it ended.
+8. **Controller API:** `TestLoadout()`, `EndTest()`, `IsTesting()`, and the signals `TestStarted` and `TestEnded`.

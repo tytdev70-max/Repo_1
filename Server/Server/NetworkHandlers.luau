@@ -870,6 +870,7 @@ function NetworkHandlers.init()
 		local tool = GetEquippedWeaponTool(player)
 		if not tool then return end
 		if claimedTool and claimedTool ~= tool then return end -- only the equipped weapon
+		if tool:GetAttribute("GunsmithTestGun") then return end -- Test Loadout copy (GunsmithTest)
 		local rig = player.Character:FindFirstChild("WeaponRig")
 		if not rig then return end
 		local weaponModel = rig.Weapon:FindFirstChildWhichIsA("Model")

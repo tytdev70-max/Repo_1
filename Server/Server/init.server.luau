@@ -63,3 +63,6 @@ ProximityPromptHandlers.init()
 
 -- Saved attachment presets per gun type (DataStore). See LoadoutPresets.luau.
 require(script.LoadoutPresets).init()
+
+-- Test Loadout from the Gunsmith (test area + temporary gun). See GunsmithTest.luau.
+require(script.GunsmithTest).init()

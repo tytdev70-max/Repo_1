@@ -26,19 +26,35 @@ function CustomizeGunGUI.Init(config)
 	local glareMod = config.glareMod
 	local getThirdPersonGunModel = config.getThirdPersonGunModel
 
-	-- Put the menu ScreenGui into PlayerGui. The CustomizeGunGUI LocalScript that starts
-	-- the menu lives INSIDE this template, so without this clone it never runs.
-	if not player.PlayerGui:FindFirstChild("CustomizeGunGUI") then
-		local hud = assets:FindFirstChild("HUD")
-		local gunGUIs = hud and hud:FindFirstChild("GunGUIs")
-		local template = gunGUIs and gunGUIs:FindFirstChild("CustomizeGunGUI")
+	-- Put the menu ScreenGui into PlayerGui: HUD.GunGUIs.Gunsmith or HUD.GunGUIs.CustomizeGunGUI,
+	-- chosen by GameConfig.customizeMenu. The LocalScript that starts the menu lives INSIDE
+	-- that ScreenGui, so without this clone it never runs.
+	local menuName = if gameConfig and type(gameConfig.customizeMenu) == "string"
+			and string.lower(gameConfig.customizeMenu) == "customizegungui"
+		then "CustomizeGunGUI"
+		else "Gunsmith"
+	local otherName = if menuName == "Gunsmith" then "CustomizeGunGUI" else "Gunsmith"
+	local hud = assets:FindFirstChild("HUD")
+	local gunGUIs = hud and hud:FindFirstChild("GunGUIs")
+	local template = gunGUIs and gunGUIs:FindFirstChild(menuName)
+	if not template and gunGUIs and gunGUIs:FindFirstChild(otherName) then
+		warn(("[Customization] SPH_Assets.HUD.GunGUIs.%s not found - using %s instead"):format(menuName, otherName))
+		menuName, otherName = otherName, menuName
+		template = gunGUIs:FindFirstChild(menuName)
+	end
+	-- only one menu ScreenGui (both are looked up by name)
+	local stale = player.PlayerGui:FindFirstChild(otherName)
+	if stale and stale:IsA("ScreenGui") then
+		stale:Destroy()
+	end
+	if not player.PlayerGui:FindFirstChild(menuName) then
 		if template then
 			local customizeGUI = template:Clone()
 			customizeGUI.ResetOnSpawn = false
 			customizeGUI.Enabled = false
 			customizeGUI.Parent = player.PlayerGui
 		else
-			warn("[Customization] SPH_Assets.HUD.GunGUIs.CustomizeGunGUI not found - using the generated menu")
+			warn("[Customization] SPH_Assets.HUD.GunGUIs." .. menuName .. " not found - using the generated menu")
 		end
 	end
 
@@ -54,9 +70,9 @@ function CustomizeGunGUI.Init(config)
 		if CustomizeUI.get() then
 			return
 		end
-		warn("[Customization] the CustomizeGunGUI LocalScript did not start the menu within 3s; "
+		warn("[Customization] the menu's LocalScript (inside " .. menuName .. ") did not start the menu within 3s; "
 			.. "starting it with default options. Run CustomizeUI.diagnose() to find out why.")
-		local started, err = pcall(CustomizeUI.start, {})
+		local started, err = pcall(CustomizeUI.start, { ui = if menuName == "Gunsmith" then "gunsmith" else "template" })
 		if not started then
 			warn("[Customization] fallback start failed: " .. tostring(err))
 		end

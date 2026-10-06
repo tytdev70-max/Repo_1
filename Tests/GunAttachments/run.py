@@ -31,7 +31,7 @@ for name in os.listdir(PKG):
         sys.exit(f"unrewritten require in {name}")
     open(os.path.join(out_pkg, name), "w").write(src)
 
-for name in ("mocks.luau", "spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau", "spec_presets.luau", "spec_presets_ui.luau", "gui_globals.luau", "SPHAttachmentsMock.luau"):
+for name in ("mocks.luau", "spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau", "spec_presets.luau", "spec_presets_ui.luau", "spec_gunsmith.luau", "gui_globals.luau", "SPHAttachmentsMock.luau"):
     shutil.copy(os.path.join(HERE, name), os.path.join(build, name))
 
 # Pure modules of the Customize UI (no Roblox dependencies).
@@ -57,6 +57,11 @@ names = ["game", "Instance", "TweenInfo", "Enum", "UDim2", "Vector2", "Color3", 
 header = 'local __G = require("../../gui_globals")\n' + "".join(f"local {n} = __G.{n}\n" for n in names)
 src = src.replace("--!nonstrict\n", "--!nonstrict\n" + header, 1)
 open(os.path.join(out_customize, "View", "Template.luau"), "w").write(src)
+
+# View/Gunsmith gets the same globals.
+src = open(os.path.join(CUSTOMIZE, "View", "Gunsmith.luau")).read()
+src = src.replace("--!nonstrict\n", "--!nonstrict\n" + 'local __G = require("../../gui_globals")\n' + "".join(f"local {n} = __G.{n}\n" for n in names), 1)
+open(os.path.join(out_customize, "View", "Gunsmith.luau"), "w").write(src)
 
 # The controller (requires rewritten, Roblox globals injected the same way).
 src = open(os.path.join(CUSTOMIZE, "Controller.luau")).read()
@@ -86,7 +91,7 @@ if analyze:
     print("luau-analyze: no syntax errors")
 
 code = 0
-for spec in ("spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau", "spec_presets.luau", "spec_presets_ui.luau"):
+for spec in ("spec.luau", "spec_shim.luau", "spec_extended.luau", "spec_template.luau", "spec_presets.luau", "spec_presets_ui.luau", "spec_gunsmith.luau"):
     proc = subprocess.run([luau, spec], cwd=build, capture_output=True, text=True)
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr)

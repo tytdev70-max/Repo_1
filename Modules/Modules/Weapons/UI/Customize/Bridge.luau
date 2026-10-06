@@ -99,6 +99,67 @@ function Bridge.presets()
 	}
 end
 
+-- Weapon type shown by the Gunsmith (Rifle, Pistol...): WepStats.WeaponType, else the
+-- Tool's WeaponType attribute. (wepStats.weaponType is SPH's "Gun"/"Grenade" switch, not used.)
+function Bridge.resolveWeaponType(tool: Tool): string?
+	local sph = tool:FindFirstChild("SPH_Weapon")
+	local statsModule = sph and sph:FindFirstChild("WeaponStats")
+	if statsModule and statsModule:IsA("ModuleScript") then
+		local ok, stats = pcall(require, statsModule)
+		if ok and type(stats) == "table" and type(stats.WeaponType) == "string" and stats.WeaponType ~= "" then
+			return stats.WeaponType
+		end
+	end
+	local attribute = tool:GetAttribute("WeaponType")
+	if type(attribute) == "string" and attribute ~= "" then
+		return attribute
+	end
+	return nil
+end
+
+-- Test Loadout: GunEvents.GunsmithTest (RemoteFunction, created by the server's
+-- GunsmithTest service). The server marks the player with the attribute
+-- GunsmithTesting while a test runs and sets GunsmithTestEnd (the reason) when it ends.
+function Bridge.test()
+	local Signal = require(script.Parent.Signal)
+	local ended = Signal.new()
+	local remote: RemoteFunction? = nil
+	local function getRemote(): RemoteFunction?
+		if remote and remote.Parent then
+			return remote
+		end
+		remote = (SPH_Events.Find("GunEvents", "GunsmithTest")
+			or SPH_Events.WaitFor("GunEvents", "GunsmithTest", 5)) :: RemoteFunction?
+		return remote
+	end
+	local connection = player:GetAttributeChangedSignal("GunsmithTesting"):Connect(function()
+		if not player:GetAttribute("GunsmithTesting") then
+			ended:Fire(player:GetAttribute("GunsmithTestEnd") or "ended")
+		end
+	end)
+	return {
+		invoke = function(action: string, ...: any)
+			local fn = getRemote()
+			if not fn then
+				return { ok = false, error = "unavailable" }
+			end
+			local ok, result = pcall(fn.InvokeServer, fn, action, ...)
+			if not ok or type(result) ~= "table" then
+				return { ok = false, error = "unavailable" }
+			end
+			return result
+		end,
+		isTesting = function(): boolean
+			return player:GetAttribute("GunsmithTesting") == true
+		end,
+		ended = ended,
+		destroy = function()
+			connection:Disconnect()
+			ended:DisconnectAll()
+		end,
+	}
+end
+
 function Bridge.confirmedEvent(): BindableEvent
 	return SPH_Events.GetOrCreate("GunEvents", "CustomizeConfirmed", "BindableEvent") :: BindableEvent
 end

@@ -87,7 +87,8 @@ local function GetCustomizeGUI(): Instance?
 	if cachedCustomizeGUI and cachedCustomizeGUI.Parent then
 		return cachedCustomizeGUI
 	end
-	cachedCustomizeGUI = playerGui:FindFirstChild("CustomizeGunGUI")
+	-- the customize menu: Gunsmith or CustomizeGunGUI (GameConfig.customizeMenu)
+	cachedCustomizeGUI = playerGui:FindFirstChild("Gunsmith") or playerGui:FindFirstChild("CustomizeGunGUI")
 	return cachedCustomizeGUI
 end
 

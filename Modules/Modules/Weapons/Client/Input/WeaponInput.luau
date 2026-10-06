@@ -49,8 +49,13 @@ HandleInput = function(actionName, inputState, inputObject)
 	end
 
 
+	-- the customize menu (Gunsmith or CustomizeGunGUI) blocks weapon input while open
 	local customizeGUI = playerGui:FindFirstChild("CustomizeGunGUI")
 	if customizeGUI and customizeGUI.Enabled then
+		return
+	end
+	local gunsmithGUI = playerGui:FindFirstChild("Gunsmith")
+	if gunsmithGUI and gunsmithGUI.Enabled then
 		return
 	end
 

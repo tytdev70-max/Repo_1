@@ -143,12 +143,32 @@ Config.defaults = {
 			server_error = "Something went wrong, try again",
 			bad_request = "Something went wrong, try again",
 		},
+
+		-- Test Loadout (Gunsmith)
+		testReturn = "Return to Gunsmith",
+		testErrors = {
+			disabled = "Testing is turned off",
+			no_zone = "There is no test area in this place",
+			busy = "Already testing",
+			no_weapon = "Equip a gun first",
+			dead = "You can't test right now",
+			rate_limited = "Too fast - try again in a moment",
+			unavailable = "Testing is unavailable right now",
+			bad_request = "Something went wrong, try again",
+		},
 	},
 
 	-- ── presets (saved loadouts per gun type) ─────────────────────────────────
 	-- Server settings (limit, DataStore) live in Weapons/Presets/PresetSettings.
 	presets = {
 		enabled = true,
+	},
+
+	-- ── Test Loadout (Gunsmith) ───────────────────────────────────────────────
+	-- Server settings (test area, time limit) live in Weapons/Gunsmith/GunsmithTestSettings.
+	test = {
+		enabled = true,
+		resumeTimeout = 5, -- seconds to wait for the real gun to be equipped again before reopening
 	},
 
 	-- ── extension points ─────────────────────────────────────────────────────
@@ -162,7 +182,19 @@ Config.defaults = {
 	--   "template"  (default) the CustomizeGunGUI designed in Studio (View/Template).
 	--               Falls back to "generated" if the ScreenGui has no template frames.
 	--   "generated" the UI built in code (View/init); the template frames are hidden.
+	--   "gunsmith"  the Gunsmith ScreenGui (View/Gunsmith); falls back like "template".
+	-- If start() gets no ui, GameConfig.customizeMenu decides ("Gunsmith" -> "gunsmith").
 	ui = "template",
+
+	-- Options for ui = "gunsmith" (see View/Gunsmith for the expected hierarchy)
+	gunsmith = {
+		noneItem = true, -- first entry of every list that may be empty: "None" (clears the slot)
+		uppercaseCategories = true, -- AttachmentType shows "OPTICS" instead of "Optics"
+		selectedColor = { 100, 200, 100 }, -- AttachmentName colour of the picked entry (if it has no "Selected" child)
+		unavailableTransparency = 0.6, -- entries shown with behaviour.showUnavailable
+		-- Save names for now: "<word> <number>", e.g. "Viper 27"
+		randomNameWords = { "Alpha", "Bravo", "Delta", "Echo", "Ghost", "Hawk", "Raven", "Viper", "Wolf", "Cobra", "Falcon", "Nomad" },
+	},
 
 	-- Options for ui = "template" (see View/Template for the expected hierarchy)
 	template = {
