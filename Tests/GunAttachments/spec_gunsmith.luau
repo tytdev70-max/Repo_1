@@ -129,6 +129,18 @@ test("isGunsmith recognises the hierarchy; templates hidden; starts on the categ
 	eq(p.categories.Visible, true); eq(p.items.Visible, false); eq(p.back.Visible, false)
 end)
 
+test("missing() names the exact element; waitUntilReady reports readiness", function()
+	local gui = gunsmithGui()
+	eq(GunsmithView.missing(gui), nil)
+	eq(GunsmithView.waitUntilReady(gui, 0), true)
+	gui.Container.Attachments.Attachments.Attachments.AttachmentTemplate:Destroy()
+	eq(GunsmithView.missing(gui), "Gunsmith.Container.Attachments.Attachments.Attachments (missing: AttachmentTemplate)")
+	eq(GunsmithView.waitUntilReady(gui, 0), false)
+	local renamed = gunsmithGui()
+	renamed.Container.Attachments.Attachments.AttachmentCategory.Name = "AttachmentCategories"
+	eq(GunsmithView.missing(renamed), "Gunsmith.Container.Attachments.Attachments (missing: AttachmentCategory)")
+end)
+
 test("one category per slot: type label, picked attachment or None", function()
 	local gui = gunsmithGui()
 	local view = newView(gui)

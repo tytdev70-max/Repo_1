@@ -151,14 +151,18 @@ function CustomizeUI.start(options: { [string]: any }?)
 	local viewFactory = config.view
 	if not viewFactory and config.ui == "gunsmith" then
 		local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-		local candidate = opts.gui or playerGui:FindFirstChild(GUNSMITH_NAME)
+		-- the ScreenGui and its frames may still be loading right after it is copied in
+		local candidate = opts.gui or playerGui:FindFirstChild(GUNSMITH_NAME) or playerGui:WaitForChild(GUNSMITH_NAME, 10)
+		if candidate and GunsmithView then
+			GunsmithView.waitUntilReady(candidate, 10)
+		end
 		if candidate and GunsmithView and GunsmithView.isGunsmith(candidate) then
 			gui = candidate
 			viewFactory = GunsmithView.new
 		else
-			warn("[CustomizeUI] Gunsmith menu not usable (" .. (if candidate then candidate:GetFullName()
-				.. " is missing Container.Attachments.Attachments.AttachmentCategory.AttachmentCategoryTemplate"
-				.. " or ...Attachments.AttachmentTemplate" elseif GunsmithView then "PlayerGui.Gunsmith not found"
+			warn("[CustomizeUI] Gunsmith menu not usable (" .. (if candidate and GunsmithView
+				then "not found after 10s: " .. (GunsmithView.missing(candidate) or "?") .. " in " .. candidate:GetFullName()
+				elseif GunsmithView then "PlayerGui.Gunsmith not found"
 				else "View.Gunsmith module missing") .. "); using the CustomizeGunGUI menu")
 			config.ui = "template"
 			if candidate and candidate.Name == GUNSMITH_NAME then
@@ -298,7 +302,7 @@ function CustomizeUI.diagnose()
 		check(gs ~= nil, "PlayerGui." .. GUNSMITH_NAME .. " exists (cloned from HUD.GunGUIs.Gunsmith)")
 		check(GunsmithView ~= nil, "Customize.View.Gunsmith module loaded")
 		if gs and GunsmithView then
-			check(GunsmithView.isGunsmith(gs), "Gunsmith frames present (Container.Attachments.Attachments.AttachmentCategory"
+			check(GunsmithView.isGunsmith(gs), "Gunsmith frames present" .. (if GunsmithView.missing(gs) then " - " .. GunsmithView.missing(gs) else "") .. " (Container.Attachments.Attachments.AttachmentCategory"
 				.. ".AttachmentCategoryTemplate and ...Attachments.AttachmentTemplate)")
 			check(current == nil or current._gui == gs, "menu uses PlayerGui.Gunsmith")
 		end

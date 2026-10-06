@@ -85,6 +85,52 @@ local PATHS = {
 	items = { "Container", "Attachments", "Attachments", "Attachments" },
 }
 
+local REQUIRED = {
+	{ "Container", "Attachments", "Attachments", "AttachmentCategory", "AttachmentCategoryTemplate" },
+	{ "Container", "Attachments", "Attachments", "Attachments", "AttachmentTemplate" },
+}
+
+-- Path of the first required element that is missing (nil = all there), e.g.
+-- "Gunsmith.Container.Attachments.Attachments.Attachments (missing: AttachmentTemplate)".
+function GunsmithView.missing(gui: Instance): string?
+	for _, path in ipairs(REQUIRED) do
+		local node = gui
+		local walked = { gui.Name }
+		for _, name in ipairs(path) do
+			local nextNode = node:FindFirstChild(name)
+			if not nextNode then
+				return table.concat(walked, ".") .. " (missing: " .. name .. ")"
+			end
+			node = nextNode
+			table.insert(walked, name)
+		end
+	end
+	return nil
+end
+
+-- Waits (up to `timeout` seconds in total) for the required frames: right after the
+-- ScreenGui is copied into PlayerGui, its descendants may still be loading.
+function GunsmithView.waitUntilReady(gui: Instance, timeout: number?): boolean
+	local deadline = os.clock() + (timeout or 10)
+	for _, path in ipairs(REQUIRED) do
+		local node = gui
+		for _, name in ipairs(path) do
+			local nextNode = node:FindFirstChild(name)
+			if not nextNode and node.WaitForChild then
+				local remaining = deadline - os.clock()
+				if remaining > 0 then
+					nextNode = node:WaitForChild(name, remaining)
+				end
+			end
+			if not nextNode then
+				return false
+			end
+			node = nextNode
+		end
+	end
+	return true
+end
+
 function GunsmithView.isGunsmith(gui: Instance): boolean
 	local categories = find(gui, PATHS.categories)
 	local items = find(gui, PATHS.items)
