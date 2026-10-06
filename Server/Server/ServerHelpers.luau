@@ -7,7 +7,7 @@ local Constants      = require(script.Parent.Constants)
 local ServerState    = require(script.Parent.ServerState)
 local ArmLerpSystem  = require(script.Parent.ArmLerpSystem)
 
-local attachmentManager   = AssetRefs.attachmentManager
+local Attachments         = AssetRefs.Attachments
 local Network             = AssetRefs.Network
 local NetworkRangeUtil    = AssetRefs.NetworkRangeUtil
 local config              = AssetRefs.config
@@ -52,8 +52,7 @@ end
 
 function ServerHelpers.FindServerLeverRingPart(weapon: Model, leverRingName: string): BasePart?
 	if not leverRingName then return nil end
-	local activeAttachments = attachmentManager.GetActiveAttachments(weapon)
-	local opticsAttachment  = activeAttachments and activeAttachments["Optics"]
+	local opticsAttachment = Attachments:GetRecord(weapon, "Optics")
 	if opticsAttachment and opticsAttachment.model then
 		local attachmentLever = opticsAttachment.model:FindFirstChild(leverRingName, true)
 		if attachmentLever and attachmentLever:IsA("BasePart") then
@@ -75,10 +74,9 @@ function ServerHelpers.FindServerLeverRingMotor(weapon: Model, leverRingPart: Ba
 end
 
 function ServerHelpers.ResolveLPVOZoomConfig(tool: Instance, weapon: Model): any
-	local activeAttachments = attachmentManager.GetActiveAttachments(weapon)
-	local opticsAttachment  = activeAttachments and activeAttachments["Optics"]
-	if opticsAttachment and opticsAttachment.config and opticsAttachment.config.LPVOZoom then
-		return opticsAttachment.config.LPVOZoom
+	local attachmentLPVO = Attachments:GetConfigField(weapon, "Optics", "LPVOZoom")
+	if attachmentLPVO then
+		return attachmentLPVO
 	end
 	local ok, wepStats = pcall(require, tool.SPH_Weapon.WeaponStats)
 	if ok and wepStats and wepStats.LPVOZoom then return wepStats.LPVOZoom end
@@ -140,7 +138,7 @@ function ServerHelpers.ResolveServerGripC0(player)
 	local weapon, rig = ServerHelpers.GetServerWeaponModel(player)
 	if not weapon or not rig then return nil end
 
-	local gripData = attachmentManager.GetGripHandPosition(weapon, tool.Name)
+	local gripData = Attachments:GetGripData(weapon)
 	if not gripData then return nil end
 
 	local animBase = rig:FindFirstChild("AnimBase")

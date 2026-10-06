@@ -9,7 +9,7 @@ local ScopeConfig = require(script.Parent:WaitForChild("ScopeConfig"))
 
 local Assets = ReplicatedStorage:WaitForChild("SPH_Assets")
 local Modules = Assets:WaitForChild("Modules")
-local AttachmentManager = require(Modules.Weapons.Attachments.AttachmentManager)
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local WeaponState = require(Modules.Weapons.Core.WeaponState)
 
 --// Types
@@ -79,7 +79,7 @@ local function resolveAimPart(gunModel: Model): BasePart?
 	local sightIndex = (vars :: any).sightIndex or 1
 	local prefix = ScopeConfig.aimPartPrefix
 
-	local attachmentAimPart = AttachmentManager.GetAttachmentAimPart(gunModel, sightIndex)
+	local attachmentAimPart = Attachments:GetAimPart(gunModel, sightIndex)
 	if attachmentAimPart and attachmentAimPart:IsA("BasePart") then
 		return attachmentAimPart
 	end
@@ -375,7 +375,7 @@ local function ActivateScopeFocusPart(part: BasePart, model: Model, Patcher: Pat
 		return false
 	end
 
-	local activeAttachments = AttachmentManager.GetActiveAttachments(model)
+	local activeAttachments = Attachments:GetActive(model)
 	local opticsAttachment = activeAttachments and activeAttachments[ScopeConfig.opticsAttachmentSlot]
 	if opticsAttachment and opticsAttachment.model then
 		local preferredScope = opticsAttachment.model:FindFirstChild(ScopeConfig.scopeFocusPartName, true)

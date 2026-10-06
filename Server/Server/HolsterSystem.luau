@@ -9,7 +9,7 @@ local EventRefs     = require(script.Parent.EventRefs)
 local replicatedStorage = ServiceRefs.replicatedStorage
 local assets            = AssetRefs.assets
 local weldMod           = AssetRefs.weldMod
-local attachmentManager = AssetRefs.attachmentManager
+local Attachments = AssetRefs.Attachments
 
 local pendingHolsterShows = ServerState.pendingHolsterShows
 local showHolsterRemote   = EventRefs.showHolsterRemote
@@ -57,22 +57,7 @@ function HolsterSystem.HolsterWeapon(player, holsterPart, tool, holsterCFrame)
 		holsterModel.Grip.Transparency = 1
 	end
 
-	attachmentManager.ClearAllAttachments(holsterModel)
-	attachmentManager.PrepareForEquip(holsterModel)
-
-	local savedAttachments = tool:FindFirstChild("SavedAttachments")
-	if savedAttachments then
-		for _, attachmentData in ipairs(savedAttachments:GetChildren()) do
-			if attachmentData:IsA("StringValue") and attachmentData.Value ~= "" then
-				local category       = attachmentData.Name
-				local attachmentName = attachmentData.Value
-				local success = attachmentManager.EquipAttachment(player, tool, holsterModel, attachmentName, category)
-				if not success then
-					warn("[Holster] Failed to apply attachment:", attachmentName, "->", category)
-				end
-			end
-		end
-	end
+	Attachments:ApplyLoadout(holsterModel, tool, player)
 
 	local hiddenStore = getHiddenStore()
 
@@ -146,7 +131,7 @@ end
 
 function HolsterSystem.CheckHolster(player, tool)
 	local wepStats = require(tool.SPH_Weapon.WeaponStats)
-	if wepStats.holster then
+	if wepStats.holster and player.Character then
 		local holsterPart = player.Character:FindFirstChild(wepStats.holsterPart)
 		if player.Character
 			and not player.Character:FindFirstChild("Holster_" .. tool.Name)

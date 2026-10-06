@@ -6,7 +6,7 @@ local vars = require(Modules.Weapons.Core.WeaponState).get()
 local config = require(Assets.GameConfig)
 local assets = Assets
 local animations = Assets.Animations
-local attachmentManager = require(Modules.Weapons.Attachments.AttachmentManager)
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local grenadeClient = require(Modules.Misc.Grenades.GrenadeClient)
 local armPositionMod = require(Modules.Weapons.Aiming.ArmPositionMod)
 local ubglSystem = require(Modules.Weapons.Attachments.UBGLHandlerMod)
@@ -107,29 +107,8 @@ end
 
 PlayRepSound = function(soundName)
 	if not vars.dead then
-		local isSuppressed = false
-		if vars.equipped then
-			local savedAttachments = vars.equipped:FindFirstChild("SavedAttachments")
-			if savedAttachments then
-				local muzzleData = savedAttachments:FindFirstChild("Muzzle")
-				if muzzleData and muzzleData:IsA("StringValue") then
-					local attachmentName = muzzleData.Value
-					local categoryFolder = assets.GunAttachments:FindFirstChild("Muzzle")
-					if categoryFolder then
-						local attachmentFolder = categoryFolder:FindFirstChild(attachmentName)
-						if attachmentFolder then
-							local customizationModule = attachmentFolder:FindFirstChild("Customization")
-							if customizationModule then
-								local config = require(customizationModule)
-								if config.EnableSilencer then
-									isSuppressed = true
-								end
-							end
-						end
-					end
-				end
-			end
-		end
+		local isSuppressed = vars.equipped ~= nil
+			and Attachments:LoadoutHasFlag(vars.equipped, "EnableSilencer")
 
 		if isSuppressed then
 			if soundName == "Fire" or soundName == "AutoFire" then

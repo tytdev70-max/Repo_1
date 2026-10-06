@@ -11,6 +11,7 @@ local GunSetupSystem     = require(script.Parent.GunSetupSystem)
 local GunDropSystem      = require(script.Parent.GunDropSystem)
 local PlayerFireSystem   = require(script.Parent.PlayerFireSystem)
 local EventRefs          = require(script.Parent.EventRefs)
+local LoadoutPresets     = require(script.Parent.LoadoutPresets)
 
 local ServiceRefs_debris = ServiceRefs.debris
 local HttpService        = ServiceRefs.HttpService
@@ -20,7 +21,7 @@ local config             = AssetRefs.config
 local Network            = AssetRefs.Network
 local NetworkRangeUtil   = AssetRefs.NetworkRangeUtil
 local MaterialCodec      = AssetRefs.MaterialCodec
-local attachmentManager  = AssetRefs.attachmentManager
+local Attachments        = AssetRefs.Attachments
 local grenadeHandler     = AssetRefs.grenadeHandler
 local glassShatterMod    = AssetRefs.glassShatterMod
 local HitResolutionMod   = AssetRefs.HitResolutionMod
@@ -67,7 +68,7 @@ local EnsureArmLerpHeartbeat = ArmLerpSystem.EnsureArmLerpHeartbeat
 
 local function SetOverheatEffectActive(model: Model, enable: boolean, heatEffectName: string)
 	if not model then return end
-	local activeMuzzle = attachmentManager.GetActiveMuzzle(model)
+	local activeMuzzle = Attachments:GetActiveMuzzle(model)
 		or model.Grip:FindFirstChild("Muzzle")
 		or model.Grip
 	for _, emitter in ipairs(model:GetDescendants()) do
@@ -348,7 +349,7 @@ function NetworkHandlers.init()
 		local tool = player.Character:FindFirstChildWhichIsA("Tool")
 		if not tool or not tool:FindFirstChild("SPH_Weapon") then return end
 		local wepStats = require(tool.SPH_Weapon.WeaponStats)
-		local attachmentHeatConfig = attachmentManager.GetOverheatConfig(weapon)
+		local attachmentHeatConfig = Attachments:GetConfigField(weapon, "Muzzle", "overHeating")
 		local heatConfig = attachmentHeatConfig or wepStats.overHeating
 		if not heatConfig or not heatConfig.Enabled then return end
 		SetOverheatEffectActive(weapon, shouldEnable, heatConfig.heatEffectName)
@@ -609,7 +610,7 @@ function NetworkHandlers.init()
 		local tool = GetEquippedWeaponTool(player)
 		local weaponStats = tool and WeaponLighting.GetStatsForSource(tool)
 		if attachmentType == 0 then
-			local flashlightPart = attachmentManager.GetFlashlightSource(weapon)
+			local flashlightPart = Attachments:GetFlashlightSource(weapon)
 			if flashlightPart then
 				WeaponLighting.ApplyFlashlight(flashlightPart, weaponStats)
 				Network.packets.ToggleAttachmentReplicate.sendToAllExcept({
@@ -619,7 +620,7 @@ function NetworkHandlers.init()
 				}, player)
 			end
 		elseif attachmentType == 1 then
-			local laserPart = attachmentManager.GetLaserSource(weapon)
+			local laserPart = Attachments:GetLaserSource(weapon)
 			if laserPart then
 				WeaponLighting.ApplyLaserSource(laserPart, weaponStats)
 				Network.packets.ToggleAttachmentReplicate.sendToAllExcept({
@@ -851,45 +852,61 @@ function NetworkHandlers.init()
 	end)
 
 	-- Apply Attachments
-	EventRefs.applyAttachmentsEvent.OnServerEvent:Connect(function(player, selectedAttachments)
-		if typeof(selectedAttachments) ~= "table" then return end
+	-- Payload shapes accepted (both are sent by the two customization UIs):
+	--   FireServer(loadout)          Weapons/UI/CustomizeGunGUI
+	--   FireServer(tool, loadout)    HUD/CustomizeGunGUI
+	--   FireServer(tool, loadout, presetName)  applying a saved preset (LoadoutPresets)
+	EventRefs.applyAttachmentsEvent.OnServerEvent:Connect(function(player, firstArg, secondArg, thirdArg)
+		local claimedTool = nil
+		local rawLoadout  = firstArg
+		local presetName  = nil
+		if typeof(firstArg) == "Instance" then
+			claimedTool = firstArg
+			rawLoadout  = secondArg
+			presetName  = if type(thirdArg) == "string" then thirdArg else nil
+		end
+		if typeof(rawLoadout) ~= "table" then return end
 		if not player.Character then return end
 		local tool = GetEquippedWeaponTool(player)
 		if not tool then return end
+		if claimedTool and claimedTool ~= tool then return end -- only the equipped weapon
+		if tool:GetAttribute("GunsmithTestGun") then return end -- Test Loadout copy (GunsmithTest)
 		local rig = player.Character:FindFirstChild("WeaponRig")
 		if not rig then return end
 		local weaponModel = rig.Weapon:FindFirstChildWhichIsA("Model")
 		if not weaponModel then return end
 
-		print("[Server] Received attachment request from:", player.Name)
-		local encodedOk, encodedAttachments = pcall(HttpService.JSONEncode, HttpService, selectedAttachments)
-		if encodedOk then print("[Server] Attachments:", encodedAttachments) end
+		-- Type / slot whitelist / length validation lives in the attachment system.
+		local loadout = Attachments:SanitizeLoadout(rawLoadout, tool)
 
-		attachmentManager.ClearAllAttachments(weaponModel)
-		local savedAttachments = tool:FindFirstChild("SavedAttachments")
-		if savedAttachments then savedAttachments:Destroy() end
-		savedAttachments        = Instance.new("Folder")
-		savedAttachments.Name   = "SavedAttachments"
-		savedAttachments.Parent = tool
-
-		for category, attachmentName in pairs(selectedAttachments) do
-			if type(category) ~= "string" or not ATTACHMENT_CATEGORIES[category] then continue end
-			if type(attachmentName) ~= "string" or attachmentName == "" or #attachmentName > 64 then continue end
-			local success = attachmentManager.EquipAttachment(player, tool, weaponModel, attachmentName, category)
-			if success then
-				print("[Server]   Applied", attachmentName, "to", category)
-				local dataValue = savedAttachments:FindFirstChild(category)
-				if not dataValue then
-					dataValue = Instance.new("StringValue")
-					dataValue.Name   = category
-					dataValue.Parent = savedAttachments
+		-- Both UIs fire on the same confirm: skip the rebuild if nothing changed.
+		local unchanged = Attachments:HasLoadout(tool)
+		if unchanged then
+			local saved = Attachments:GetLoadout(tool)
+			for slot, name in pairs(loadout) do
+				local record = Attachments:GetRecord(weaponModel, slot)
+				if saved[slot] ~= name or not record or record.attachmentName ~= name then
+					unchanged = false
+					break
 				end
-				dataValue.Value = attachmentName
-			else
-				warn("[Server] Failed to apply", attachmentName)
+			end
+			for slot in pairs(saved) do
+				if loadout[slot] == nil then unchanged = false break end
 			end
 		end
-		print("[Server]   All attachments applied and saved")
+		if unchanged then
+			-- Nothing to rebuild, but applying a saved preset still makes it active.
+			LoadoutPresets.OnLoadoutApplied(player, tool, loadout, presetName)
+			return
+		end
+
+		local results = Attachments:ApplyLoadout(weaponModel, tool, player, loadout)
+		local applied = {}
+		for slot, ok in pairs(results) do
+			if ok then applied[slot] = loadout[slot] end
+		end
+		Attachments:SetLoadout(tool, applied)
+		LoadoutPresets.OnLoadoutApplied(player, tool, applied, presetName)
 		RefreshPlayerArmReplication(player)
 	end)
 

@@ -9,7 +9,7 @@ local rayParams
 local config
 local tweenService
 local shootBlur
-local attachmentManager
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local bulletHandler
 local player
 local playerGui
@@ -52,7 +52,6 @@ function WeaponFireMod.Init(deps)
 	config = deps.config
 	tweenService = deps.tweenService
 	shootBlur = deps.shootBlur
-	attachmentManager = deps.attachmentManager
 	bulletHandler = deps.bulletHandler
 	player = deps.player
 	playerGui = deps.playerGui
@@ -88,7 +87,8 @@ local function GetCustomizeGUI(): Instance?
 	if cachedCustomizeGUI and cachedCustomizeGUI.Parent then
 		return cachedCustomizeGUI
 	end
-	cachedCustomizeGUI = playerGui:FindFirstChild("CustomizeGunGUI")
+	-- the customize menu: Gunsmith or CustomizeGunGUI (GameConfig.customizeMenu)
+	cachedCustomizeGUI = playerGui:FindFirstChild("Gunsmith") or playerGui:FindFirstChild("CustomizeGunGUI")
 	return cachedCustomizeGUI
 end
 
@@ -98,7 +98,7 @@ local function UpdateOverheat(dt: number)
 	local gunModel = vars.gunModel
 
 	if equipped and wepStats and gunModel then
-		local attachmentHeatConfig = attachmentManager.GetOverheatConfig(gunModel)
+		local attachmentHeatConfig = Attachments:GetConfigField(gunModel, "Muzzle", "overHeating")
 		local heatConfig = attachmentHeatConfig or wepStats.overHeating
 
 		if heatConfig and heatConfig.Enabled then
@@ -134,7 +134,7 @@ local function UpdateOverheat(dt: number)
 					if not model then return end
 
 					local grip = model:FindFirstChild("Grip")
-					local activeMuzzle = attachmentManager.GetActiveMuzzle(model)
+					local activeMuzzle = Attachments:GetActiveMuzzle(model)
 						or (grip and (grip:FindFirstChild("Muzzle") or grip))
 
 					for _, emitter in ipairs(model:GetDescendants()) do
@@ -233,7 +233,7 @@ local function UpdateFireLoop(dt: number)
 			vars.ejected = false
 			vars.lastReloadCompletedTime = 0
 
-			local heatConfig = attachmentManager.GetOverheatConfig(gunModel) or wepStats.overHeating
+			local heatConfig = Attachments:GetConfigField(gunModel, "Muzzle", "overHeating") or wepStats.overHeating
 			if heatConfig and heatConfig.Enabled then
 				vars.currentHeat = vars.currentHeat + heatConfig.HeatPerShot
 				vars.lastShotTime = tick()
@@ -381,8 +381,8 @@ local function UpdateFireLoop(dt: number)
 			end
 			local isAutoFire = (curFireMode == fireModes.Auto)
 
-			local isSuppressed = attachmentManager.HasAttachment(gunModel, "Muzzle") and
-				attachmentManager.GetActiveAttachments(gunModel)["Muzzle"].config.EnableSilencer or false
+			-- Any mounted slot may suppress (Muzzle, Barrel, ...).
+			local isSuppressed = Attachments:AnyActiveFlag(gunModel, "EnableSilencer")
 
 			bulletHandler.FireFX(player, tempGunModel, "Muzzle", wepStats.muzzleChance, nil, isAutoFire, isSuppressed)
 

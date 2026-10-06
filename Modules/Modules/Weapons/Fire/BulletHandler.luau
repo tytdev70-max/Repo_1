@@ -16,7 +16,7 @@ local Network = require(modules.Core.Networking.SPH_Network)
 local MaterialCodec = require(modules.Core.Networking.MaterialCodec)
 local partCache = require(modules.Core.Utility.PartCache)
 local pierceMod = require(modules.Weapons.Fire.PierceMod)
-local attachmentManager = require(modules.Weapons.Attachments.AttachmentManager)
+local Attachments = require(modules.Weapons.Attachments.SPHAttachments)
 local visualisationManager = require(modules.Effects.Rendering.Visualisation_Manager)
 local FastCast = require(modules.ThirdParty.FastCast)
 local SmokeVoxelMod = require(modules.Effects.Environment.SmokeVoxelMod)
@@ -569,7 +569,7 @@ local function PlaySFX(parent, playerFired, isAutoFire, wepStats, isSuppressed, 
 	if isSuppressed then
 		local gunModel = parent:FindFirstAncestorWhichIsA("Model")
 		if gunModel then
-			local activeMuzzle = attachmentManager.GetActiveMuzzle(gunModel)
+			local activeMuzzle = Attachments:GetActiveMuzzle(gunModel)
 			if activeMuzzle then
 				soundParent = activeMuzzle
 			end
@@ -915,10 +915,10 @@ end
 module.FireFX = function(playerFired, gunModel, firePointName, muzzleChance, soundDelay, isAutoFire, isSuppressed, soundNameOverride)
 	local activeMuzzle
 	if firePointName == "Muzzle" then
-		activeMuzzle = attachmentManager.GetActiveMuzzle(gunModel)
+		activeMuzzle = Attachments:GetActiveMuzzle(gunModel)
 
 		if activeMuzzle then
-			local muzzleConfig = attachmentManager.GetMuzzleAttachmentConfig(gunModel)
+			local muzzleConfig = Attachments:GetSlotConfig(gunModel, "Muzzle")
 			if muzzleConfig then
 			end
 		end

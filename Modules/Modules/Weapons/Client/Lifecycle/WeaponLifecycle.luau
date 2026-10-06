@@ -4,7 +4,7 @@ local Assets = Modules.Parent
 local WeaponContext = require(Modules.Weapons.Core.WeaponContext)
 local vars = require(Modules.Weapons.Core.WeaponState).get()
 local config = require(Assets.GameConfig)
-local attachmentManager = require(Modules.Weapons.Attachments.AttachmentManager)
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local aimVignette = require(Modules.Weapons.Aiming.AimVignetteMod)
 local weaponPushback = require(Modules.Weapons.Fire.WeaponPushbackMod)
 local armPositionMod = require(Modules.Weapons.Aiming.ArmPositionMod)
@@ -285,14 +285,14 @@ Unequip = function(tool, skipAnimation, skipBackpackEnable)
 	end
 	if vars.flashlightEnabled then
 		playerToggleAttachment.send({ AttachmentType = 0, Enabled = false })
-		local fpFlashlightPart = vars.gunModel and attachmentManager.GetFlashlightSource(vars.gunModel)
+		local fpFlashlightPart = vars.gunModel and Attachments:GetFlashlightSource(vars.gunModel)
 		if fpFlashlightPart then
 			vars.flashFX.mod.SetEnabled(fpFlashlightPart, false)
 			glareMod.SetFlashlightActive(fpFlashlightPart, false)
 		end
 		local tpModel = GetThirdPersonGunModel()
 		if tpModel then
-			local tpFlashlightPart = attachmentManager.GetFlashlightSource(tpModel)
+			local tpFlashlightPart = Attachments:GetFlashlightSource(tpModel)
 			if tpFlashlightPart then
 				vars.flashFX.mod.SetEnabled(tpFlashlightPart, false)
 				glareMod.SetFlashlightActive(tpFlashlightPart, false)
@@ -312,7 +312,7 @@ Unequip = function(tool, skipAnimation, skipBackpackEnable)
 	local oldGun = weaponFolder and weaponFolder:FindFirstChildWhichIsA("Model")
 	if oldGun then
 		if not vars.queuedTool then
-			attachmentManager.CleanupMuzzleState(oldGun)
+			Attachments:CleanupMuzzleState(oldGun)
 		end
 
 		local projectilePart = unequippedProjectileName

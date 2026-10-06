@@ -7,7 +7,7 @@ local WeaponContext = require(Modules.Weapons.Core.WeaponContext)
 local vars = require(Modules.Weapons.Core.WeaponState).get()
 local config = require(Assets.GameConfig)
 local aimingSystemMod = require(Modules.Weapons.Aiming.AimingSystemMod)
-local attachmentManager = require(Modules.Weapons.Attachments.AttachmentManager)
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local ubglSystem = require(Modules.Weapons.Attachments.UBGLHandlerMod)
 local camera = workspace.CurrentCamera
 local tweenService = game:GetService("TweenService")
@@ -24,7 +24,7 @@ local ToggleADS, ChangeHoldStance, HardStopHoldStance, ChangeDoF, ToggleSprint, 
 
 ToggleADS = function(toggle)
 	if vars.wepStats and vars.wepStats.ADSEnabled then
-		aimingSystemMod.ApplyADSVisual(vars.gunModel, toggle, vars.wepStats, attachmentManager)
+		aimingSystemMod.ApplyADSVisual(vars.gunModel, toggle, vars.wepStats)
 	end
 end
 

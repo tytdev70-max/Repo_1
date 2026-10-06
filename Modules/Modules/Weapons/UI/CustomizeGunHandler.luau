@@ -47,6 +47,14 @@ function CustomizeGunHandler.SetPromptsEnabled(enabled: boolean)
 	if enabled then refreshPromptText() end
 end
 
+function CustomizeGunHandler.GetPromptCount(): number
+	return #customizePrompts
+end
+
+function CustomizeGunHandler.IsBound(): boolean
+	return openCallback ~= nil
+end
+
 function CustomizeGunHandler.Refresh()
 	refreshPromptText()
 end
@@ -71,9 +79,16 @@ Main.RegisterHandler({
 		refreshPromptText()
 	end,
 	onTriggered = function(prompt: ProximityPrompt, _triggeringPlayer: Player)
-		if not hasWeaponEquipped() then return end
+		if not hasWeaponEquipped() then
+			return -- prompt text already says "Equip a gun to customize it!"
+		end
 		if isOpenCallback and isOpenCallback() then return end
-		if openCallback then openCallback() end
+		if openCallback then
+			openCallback()
+		else
+			warn("[CustomizeGunHandler] prompt triggered but the customize menu has not started "
+				.. "(CustomizeUI.start was never called). Run CustomizeUI.diagnose() for details.")
+		end
 	end,
 	onRemoved = function(prompt: ProximityPrompt)
 		local idx = table.find(customizePrompts, prompt)

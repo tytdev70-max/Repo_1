@@ -9,7 +9,7 @@ local ServerHelpers = require(script.Parent.ServerHelpers)
 local assets            = AssetRefs.assets
 local modules           = AssetRefs.modules
 local weldMod           = AssetRefs.weldMod
-local attachmentManager = AssetRefs.attachmentManager
+local Attachments = AssetRefs.Attachments
 local Network           = AssetRefs.Network
 local NetworkRangeUtil  = AssetRefs.NetworkRangeUtil
 local ubglHandler       = AssetRefs.ubglHandler
@@ -133,6 +133,12 @@ function GunSetupSystem.EquipGun(rig: Model, tool: Tool, equipPlayer: Player)
 			return GunSetupSystem.EquipGrenadeServerModel(rig, tool, wepStats)
 		end
 
+		-- Guarantee the tool's runtime state (Ammo/Chambered/BoltReady/FireMode) exists
+		-- before anything below reads it. Tools that reached the character without
+		-- passing through the Backpack hook (e.g. GunGiver after a respawn) would
+		-- otherwise be missing these values. SetupGun is idempotent.
+		GunSetupSystem.SetupGun(tool, wepStats)
+
 		local gun = assets.WeaponModels[tool.Name]:Clone()
 
 		if not wepStats.disableAutoRigging then
@@ -154,7 +160,8 @@ function GunSetupSystem.EquipGun(rig: Model, tool: Tool, equipPlayer: Player)
 		end
 
 		local projectile = gun:FindFirstChild(wepStats.projectile, true)
-		if (wepStats.openBolt or not tool.Chambered.Value)
+		local chamberedValue = tool:FindFirstChild("Chambered")
+		if (wepStats.openBolt or not (chamberedValue and chamberedValue.Value))
 			and projectile
 			and wepStats.projectile ~= "Bullet"
 			and projectile.Name ~= "Mag" then
@@ -180,25 +187,9 @@ function GunSetupSystem.EquipGun(rig: Model, tool: Tool, equipPlayer: Player)
 			end
 		end
 
-		attachmentManager.ClearAllAttachments(gun)
-		attachmentManager.PrepareForEquip(gun)
-
-		if tool:FindFirstChild("SavedAttachments") then
-			for _, attachmentData in ipairs(tool.SavedAttachments:GetChildren()) do
-				if attachmentData:IsA("StringValue") and attachmentData.Value ~= "" then
-					local category       = attachmentData.Name
-					local attachmentName = attachmentData.Value
-					local success = attachmentManager.EquipAttachment(
-						players:GetPlayerFromCharacter(rig.Parent),
-						tool, gun, attachmentName, category)
-					if success then
-						print("[Server] Applied", attachmentName, "to TP model")
-					else
-						warn("[Server] Failed to apply", attachmentName, "to TP model")
-					end
-				end
-			end
-		end
+		-- Rebuild the third-person model from the tool's saved loadout (failures are
+		-- reported by the attachment system).
+		Attachments:ApplyLoadout(gun, tool, players:GetPlayerFromCharacter(rig.Parent))
 
 		if rig.AnimBase:FindFirstChild("GunMotor") then
 			rig.AnimBase:FindFirstChild("GunMotor"):Destroy()

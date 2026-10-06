@@ -15,7 +15,8 @@ local character, humanoid, humanoidRootPart
 local rootJoint, neckJoint, leftHipJoint, rightHipJoint
 local defaultLeftHipC0, defaultRightHipC0
 local camera, animBase, config, defaultFOV, storageCFrame
-local headPoseReplicationMod, attachmentManager, grenadeClient
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
+local headPoseReplicationMod, grenadeClient
 local laserSightMod, glareMod, aimingSystemMod, proceduralWalkCycle
 local ubglSystem, userInputService, armPositionMod
 local aimFOVTargetRef, ZOOM_SENSITIVITY_REDUCTION, moveSpring, player
@@ -144,7 +145,6 @@ function CameraViewmodelMod.Init(deps)
 	defaultFOV               = deps.defaultFOV
 	storageCFrame            = deps.storageCFrame
 	headPoseReplicationMod   = deps.headPoseReplicationMod
-	attachmentManager        = deps.attachmentManager
 	grenadeClient            = deps.grenadeClient
 	laserSightMod            = deps.laserSightMod
 	glareMod                 = deps.glareMod
@@ -299,11 +299,11 @@ function CameraViewmodelMod.Update(dt: number)
 			vars.viewmodelVisible = true
 
 			if vars.flashlightEnabled then
-				local fpPart = attachmentManager.GetFlashlightSource(gunModel)
+				local fpPart = Attachments:GetFlashlightSource(gunModel)
 				if fpPart then vars.flashFX.mod.SetEnabled(fpPart, true, vars.wepStats) end
 
 				local tpModel = getThirdPersonGunModel()
-				local tpPart  = tpModel and attachmentManager.GetFlashlightSource(tpModel)
+				local tpPart  = tpModel and Attachments:GetFlashlightSource(tpModel)
 				if tpPart then vars.flashFX.mod.SetEnabled(tpPart, false, vars.wepStats) end
 
 				vars.flashFX.beamTP.Enabled = false
@@ -347,12 +347,12 @@ function CameraViewmodelMod.Update(dt: number)
 				vars.flashFX.beamTP.Enabled = true
 			end
 
-			local fpPart = attachmentManager.GetFlashlightSource(gunModel)
+			local fpPart = Attachments:GetFlashlightSource(gunModel)
 			if fpPart then vars.flashFX.mod.SetEnabled(fpPart, false, vars.wepStats) end
 
 			if vars.flashlightEnabled then
 				local tpModel = getThirdPersonGunModel()
-				local tpPart  = tpModel and attachmentManager.GetFlashlightSource(tpModel)
+				local tpPart  = tpModel and Attachments:GetFlashlightSource(tpModel)
 				if tpPart then vars.flashFX.mod.SetEnabled(tpPart, true, vars.wepStats) end
 			end
 		end
@@ -520,12 +520,12 @@ function CameraViewmodelMod.Update(dt: number)
 
 	-- ── Flashlight ────────────────────────────────────────────────────────────
 	if vars.flashlightEnabled and equipped then
-		local flashlightPart = attachmentManager.GetFlashlightSource(gunModel)
+		local flashlightPart = Attachments:GetFlashlightSource(gunModel)
 		if not flashlightPart then
 			vars.flashlightEnabled = false
 		else
 			local tpModel        = getThirdPersonGunModel()
-			local tpFlashlightPart = tpModel and attachmentManager.GetFlashlightSource(tpModel)
+			local tpFlashlightPart = tpModel and Attachments:GetFlashlightSource(tpModel)
 
 			if flashlightPart or tpFlashlightPart then
 				local flashColor = glareMod.ResolveFlashlightColor(flashlightPart or tpFlashlightPart, vars.wepStats)

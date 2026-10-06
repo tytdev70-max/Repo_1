@@ -85,6 +85,11 @@ config.reticleBlurMaxAlpha = 1 -- Max opacity of the blur trail at full intensit
 config.gunDropping = true
 config.dropOnDeath = false
 config.dropOnLeave = false
+
+-- Which weapon customization menu opens at the customize table:
+--   "Gunsmith"        HUD.GunGUIs.Gunsmith
+--   "CustomizeGunGUI" HUD.GunGUIs.CustomizeGunGUI (the previous menu)
+config.customizeMenu = "Gunsmith"
 config.dropDespawnTime = 30 -- How long should guns stay on the ground?
 config.maxDroppedGuns = 15 -- How many can be on the ground at once?
 config.pickupDistance = 7

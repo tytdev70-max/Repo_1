@@ -9,7 +9,7 @@ local GunSetupSystem = require(script.Parent.GunSetupSystem)
 
 local assets            = AssetRefs.assets
 local weldMod           = AssetRefs.weldMod
-local attachmentManager = AssetRefs.attachmentManager
+local Attachments = AssetRefs.Attachments
 local config            = AssetRefs.config
 local proxPromptService = ServiceRefs.proxPromptService
 
@@ -53,6 +53,11 @@ function GunDropSystem.MakePickUpAble(tool, model, mainPart)
 end
 
 function GunDropSystem.SpawnGun(tool, gunPosition, dropPlayer)
+	-- Test Loadout copies (GunsmithTest) never become world pickups.
+	if tool and tool:GetAttribute("GunsmithTestGun") then
+		tool:Destroy()
+		return nil
+	end
 	local wepStats   = require(tool.SPH_Weapon.WeaponStats)
 	local dropModel  = assets.WeaponModels:FindFirstChild(tool.Name)
 	if not dropModel then return end
@@ -126,22 +131,8 @@ function GunDropSystem.SpawnGun(tool, gunPosition, dropPlayer)
 	end
 
 	GunDropSystem.MakePickUpAble(tool, dropModel, dropModel.Grip)
-	attachmentManager.PrepareForEquip(dropModel)
-
-	if tool:FindFirstChild("SavedAttachments") then
-		for _, attachmentData in ipairs(tool.SavedAttachments:GetChildren()) do
-			if attachmentData:IsA("StringValue") and attachmentData.Value ~= "" then
-				local category       = attachmentData.Name
-				local attachmentName = attachmentData.Value
-				local success = attachmentManager.EquipAttachment(nil, tool, dropModel, attachmentName, category)
-				if success then
-					print("[Server] Preserved attachment on dropped gun:", attachmentName, category)
-				else
-					warn("[Server] Failed to preserve attachment:", attachmentName, category)
-				end
-			end
-		end
-	end
+	-- Preserve the tool's attachments on the dropped model (no owner player).
+	Attachments:ApplyLoadout(dropModel, tool, nil)
 
 	local projectile    = dropModel:FindFirstChild(wepStats.projectile)
 	local chamberedVal  = tool:FindFirstChild("Chambered")

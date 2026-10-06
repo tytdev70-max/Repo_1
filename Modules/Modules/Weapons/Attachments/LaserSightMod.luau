@@ -13,6 +13,7 @@
 local LaserSightMod = {}
 
 local Modules = script:FindFirstAncestor("Modules")
+local Attachments = require(Modules.Weapons.Attachments.SPHAttachments)
 local vars = require(Modules.Weapons.Core.WeaponState).get()
 local WeaponLighting = require(script.Parent.WeaponLighting)
 
@@ -107,7 +108,7 @@ end
 local function getThirdPersonLaserSource()
 	local getModel = deps.getThirdPersonGunModel
 	local model = getModel and getModel()
-	return model and deps.attachmentManager.GetLaserSource(model)
+	return model and Attachments:GetLaserSource(model)
 end
 
 -- Fades the beam with air visibility. Quantized so the sequence is rarely rebuilt.
@@ -331,7 +332,7 @@ function LaserSightMod.ToggleLocalLaser()
 	if isToggleBlocked() then return end
 
 	local wepStats = vars.wepStats
-	local laserSource = deps.attachmentManager.GetLaserSource(vars.gunModel)
+	local laserSource = Attachments:GetLaserSource(vars.gunModel)
 
 	-- No toggle animation: flip immediately.
 	if not (wepStats and wepStats.activateFlashlightLaser) then
@@ -373,7 +374,7 @@ function LaserSightMod.UpdateLocalLaser()
 	-- The laser attachment was removed from the gun while it was on.
 	if vars.equipped and vars.laserEnabled then
 		local stillPresent = gunModel.Grip:FindFirstChild("Laser")
-			or deps.attachmentManager.HasLaserAttachment(gunModel)
+			or Attachments:AnyActiveFlag(gunModel, "EnableLaser")
 		if not stillPresent then
 			vars.laserEnabled = false
 			hideLocalLaser()
@@ -387,7 +388,7 @@ function LaserSightMod.UpdateLocalLaser()
 		return
 	end
 
-	local fpSource = deps.attachmentManager.GetLaserSource(gunModel)
+	local fpSource = Attachments:GetLaserSource(gunModel)
 	local tpSource = getThirdPersonLaserSource()
 	local laserPoint = if vars.firstPerson then fpSource else tpSource
 	if not (laserPoint and laserPoint:IsA("Attachment")) then
